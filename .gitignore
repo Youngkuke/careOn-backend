@@ -41,3 +41,4 @@ src/main/resources/application.yaml
 src/main/resources/application-*.yaml
 *.env
 .env
+app.log
