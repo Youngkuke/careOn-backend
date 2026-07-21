@@ -11,6 +11,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.NoHandlerFoundException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -53,6 +54,15 @@ public class GlobalExceptionHandler {
         ErrorResponse response =
                 ErrorResponse.of(HttpStatus.BAD_REQUEST, "값이 올바르지 않습니다.", request.getRequestURI());
         return ResponseEntity.badRequest().body(response);
+    }
+
+    /** 존재하지 않는 경로 요청. throw-exception-if-no-handler-found=true 설정 시 발생한다. */
+    @ExceptionHandler(NoHandlerFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNotFoundException(
+            NoHandlerFoundException e, HttpServletRequest request) {
+        ErrorResponse response =
+                ErrorResponse.of(HttpStatus.NOT_FOUND, "요청하신 경로를 찾을 수 없습니다.", request.getRequestURI());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
     }
 
     /** 예상하지 못한 예외에 대한 최후 방어선. 콘솔에 원인을 남겨서 디버깅할 수 있게 한다. */
