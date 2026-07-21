@@ -30,7 +30,13 @@ public class TodoService {
     private final DocumentIssueRepository documentIssueRepository;
     private final CarerRepository carerRepository;
 
-    /** 투두 목록 조회. 신청 마감일이 이미 지난 저장 제도는 제외한다. */
+    /**
+     * 투두 목록 조회.
+     * - 마감 전 제도: 서류 체크리스트 포함 (isExpired=false)
+     * - 마감 지난 제도 중 신청 여부 미응답(applied가 null)인 건: 서류 없이 포함 (isExpired=true)
+     *   → 프론트에서 "신청하셨나요?" 예/아니오 버튼 표시용
+     * - 마감 지난 제도 중 이미 응답한 건(applied=true)은 제외
+     */
     public List<TodoListResponse> getList(Integer userId) {
         Carer carer = getCarerOrThrow(userId);
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
@@ -38,18 +44,25 @@ public class TodoService {
         return savedPolicyRepository.findAllByCarer(carer).stream()
                 .filter(savedPolicy -> {
                     Policy policy = savedPolicy.getPolicy();
-                    return policy.getApplicationDeadline() != null
-                            && !policy.getApplicationDeadline().toLocalDate().isBefore(today);
+                    if (policy.getApplicationDeadline() == null) {
+                        return false;
+                    }
+                    boolean expired = policy.getApplicationDeadline().toLocalDate().isBefore(today);
+                    return !expired || savedPolicy.getApplied() == null;
                 })
-                .map(this::toTodoListResponse)
+                .map(savedPolicy -> toTodoListResponse(savedPolicy, today))
                 .toList();
     }
 
-    private TodoListResponse toTodoListResponse(SavedPolicy savedPolicy) {
+    private TodoListResponse toTodoListResponse(SavedPolicy savedPolicy, LocalDate today) {
         Policy policy = savedPolicy.getPolicy();
-        List<TodoDocumentDetail> documents = todoRepository.findAllBySavedPolicy(savedPolicy).stream()
-                .map(this::toTodoDocumentDetail)
-                .toList();
+        boolean expired = policy.getApplicationDeadline().toLocalDate().isBefore(today);
+
+        List<TodoDocumentDetail> documents = expired
+                ? List.of()
+                : todoRepository.findAllBySavedPolicy(savedPolicy).stream()
+                        .map(this::toTodoDocumentDetail)
+                        .toList();
 
         return new TodoListResponse(
                 savedPolicy.getSavedPolicyId(),
@@ -57,6 +70,7 @@ public class TodoService {
                 policy.getPolicyName(),
                 policy.getApplicationDeadline().toLocalDate().toString(),
                 policy.getLink(),
+                expired,
                 documents);
     }
 

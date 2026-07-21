@@ -91,6 +91,22 @@ public class SavedPolicyService {
         return new MessageResponse("저장이 취소되었습니다.");
     }
 
+    /**
+     * 마감 지난 저장 제도에 대해 "신청했어요(예)"를 기록한다.
+     * 기록된 제도는 이후 투두 목록 조회에서 제외된다. 본인 소유가 아니면 존재하지 않는 것으로 취급한다.
+     */
+    @Transactional
+    public MessageResponse markApplied(Integer userId, Integer savedPolicyId) {
+        Carer carer = getCarerOrThrow(userId);
+        SavedPolicy savedPolicy = savedPolicyRepository
+                .findBySavedPolicyIdAndCarer(savedPolicyId, carer)
+                .orElseThrow(() -> new BusinessException(ErrorCode.SAVED_POLICY_NOT_FOUND));
+
+        savedPolicy.markApplied();
+
+        return new MessageResponse("저장되었습니다.");
+    }
+
     /** 저장한 제도 목록 조회 (웹). */
     public List<SavedPolicyResponse> getWebList(Integer userId) {
         Carer carer = getCarerOrThrow(userId);

@@ -9,6 +9,7 @@ public record TodoListResponse(
         String policyName,
         String deadline,
         String sourceUrl,
+        boolean isExpired,
         List<TodoDocumentDetail> documents) {
 
     public record TodoDocumentDetail(

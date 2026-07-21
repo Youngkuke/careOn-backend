@@ -43,4 +43,16 @@ public class SavedPolicy {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "policy_id", nullable = false)
     private Policy policy;
+
+    /**
+     * 신청 여부. 마감이 지난 제도에 대해 유저가 "신청했어요(예)"라고 응답하면 true.
+     * null이면 아직 응답하지 않은 상태. ("아니오"는 저장 자체를 삭제하므로 false는 사용하지 않음)
+     */
+    @Column(name = "applied")
+    private Boolean applied;
+
+    /** 마감 지난 제도에 대해 "신청했어요"로 기록한다. */
+    public void markApplied() {
+        this.applied = true;
+    }
 }
