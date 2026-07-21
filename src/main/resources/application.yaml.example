@@ -1,0 +1,45 @@
+server:
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+
+spring:
+  application:
+    name: careon
+  datasource:
+    url: jdbc:postgresql://localhost:5432/careondb
+    username: careon
+    password: your-db-password
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: your-gmail-address@gmail.com
+    password: your-gmail-app-password
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+jwt:
+  # openssl rand -base64 64 같은 걸로 새로 생성해서 넣으세요. 실제 값은 커밋하지 마세요.
+  secret: your-base64-encoded-secret-key
+  web-access-token-validity-seconds: 21600
+  app-access-token-validity-seconds: 3600
+  refresh-token-validity-seconds: 7776000
+
+app:
+  # 프론트엔드 비밀번호 재설정 페이지 주소. 실제 프론트 배포되면 이 값으로 바꿔주세요.
+  password-reset-url: http://localhost:3000/reset-password
