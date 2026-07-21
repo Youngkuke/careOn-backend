@@ -1,0 +1,41 @@
+package com.youngkke.careon.domain.carer.dto;
+
+import java.util.List;
+
+/** GET /api/web/users/me/diagnosis-profile 응답 body. */
+public record DiagnosisProfileResponse(
+        Integer carerId,
+        Integer age,
+        Integer householdMembersCount,
+        Integer caredCount,
+        String knowHousingType,
+        String housingType,
+        String biggestBurdenType,
+        String burdenTypeReasonSummary,
+        String dailyCareHoursSelf,
+        String dailyCareHoursHousehold,
+        Boolean hasBackupCaregiver,
+        String backupCaregiverRelation,
+        String medicalBurdenLevel,
+        Boolean isStudent,
+        Boolean hasIncomeActivity,
+        String incomeValueStatus,
+        String incomeAssessmentCriteria,
+        Integer incomeValue,
+        String medianIncomeRatio,
+        String incomeVariabilityType,
+        String incomeRelatedUtterance,
+        Boolean hasBasicLivelihoodSupport,
+        Boolean hasBasicLivelihoodSupportSource,
+        Boolean hasChaSangWi,
+        Boolean hasChaSangWiSource,
+        String militaryServiceStatus,
+        Integer militaryServiceExtensionYears,
+        Integer housingDeposit,
+        Integer housingMonthlyRent,
+        Integer householdAssetValue,
+        Integer vehicleValue,
+        String financialDetailStatus,
+        boolean diagnosisCompleted,
+        List<CaredResponse> cared,
+        List<IncomeSignalResponse> incomeSignals) {}

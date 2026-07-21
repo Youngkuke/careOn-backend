@@ -8,7 +8,8 @@ import org.springframework.http.HttpStatus;
 public enum ErrorCode {
 
     // Common
-    INVALID_INPUT_VALUE(HttpStatus.BAD_REQUEST, "잘못된 요청입니다."),
+    INVALID_INPUT_VALUE(HttpStatus.BAD_REQUEST, "값이 올바르지 않습니다."),
+    MISSING_INPUT_VALUE(HttpStatus.BAD_REQUEST, "값이 누락되었습니다."),
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "로그인이 필요합니다."),
 
     // Carer
@@ -16,18 +17,29 @@ public enum ErrorCode {
     LOGIN_FAILED(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 일치하지 않습니다."),
     REFRESH_TOKEN_INVALID(HttpStatus.UNAUTHORIZED, "재로그인이 필요합니다."),
     RESET_LINK_INVALID(HttpStatus.BAD_REQUEST, "유효하지 않거나 만료된 링크입니다. 다시 시도해주세요."),
-
-    // Policy (회원가입 시 관심 제도 유형 참조용 - 명세서엔 없는, 데이터 무결성을 위해 추가한 에러)
-    POLICY_TYPE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 제도 유형입니다."),
+    CARER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 유저입니다."),
+    CARED_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 돌봄 대상자입니다."),
+    INCOME_SIGNAL_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 소득 추론 근거입니다."),
 
     // Policy
-    MISSING_INTEREST_TYPE_IDS(HttpStatus.BAD_REQUEST, "조회 조건 (interestTypeIds) 이 필요합니다."),
+    POLICY_TYPE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 제도 유형입니다."),
+    MISSING_INTEREST_TYPE_IDS(HttpStatus.BAD_REQUEST, "조회 조건 (interest_policy_type_ids) 이 필요합니다."),
+    MISSING_INTEREST_TYPE_SELECTION(HttpStatus.BAD_REQUEST, "관심 제도 유형을 1개 이상 선택해주세요."),
     POLICY_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 제도입니다."),
     SAVED_POLICY_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 저장한 제도입니다."),
     SAVED_POLICY_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 저장 항목입니다."),
+    MATCHED_POLICY_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 매칭 제도입니다."),
+
+    // Agency / Document
+    AGENCY_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 기관입니다."),
+    DOCUMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 서류입니다."),
+    DOCUMENT_HISTORY_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 서류 이력입니다."),
 
     // Todo
-    TODO_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 투두 항목입니다.");
+    TODO_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 투두 항목입니다."),
+
+    // Notification
+    NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 알림입니다.");
 
     private final HttpStatus status;
     private final String message;

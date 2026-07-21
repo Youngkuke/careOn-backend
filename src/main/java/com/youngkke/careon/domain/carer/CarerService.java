@@ -9,6 +9,10 @@ import com.youngkke.careon.domain.policy.SavedPolicy;
 import com.youngkke.careon.domain.policy.SavedPolicyRepository;
 import com.youngkke.careon.domain.todo.TodoRepository;
 import com.youngkke.careon.domain.carer.dto.AppInstallStatusRequest;
+import com.youngkke.careon.domain.carer.dto.AppInstallStatusResponse;
+import com.youngkke.careon.domain.document.UserDocumentHistoryRepository;
+import com.youngkke.careon.domain.policy.MatchedPolicyRepository;
+import com.youngkke.careon.global.util.DateTimes;
 import com.youngkke.careon.domain.carer.dto.AppLoginResponse;
 import com.youngkke.careon.domain.carer.dto.AppMeResponse;
 import com.youngkke.careon.domain.carer.dto.LoginRequest;
@@ -49,6 +53,10 @@ public class CarerService {
     private final SavedPolicyRepository savedPolicyRepository;
     private final TodoRepository todoRepository;
     private final NotificationRepository notificationRepository;
+    private final CaredRepository caredRepository;
+    private final CarerIncomeSignalRepository carerIncomeSignalRepository;
+    private final MatchedPolicyRepository matchedPolicyRepository;
+    private final UserDocumentHistoryRepository userDocumentHistoryRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
     private final MailService mailService;
@@ -105,8 +113,10 @@ public class CarerService {
         String accessToken =
                 jwtProvider.createAccessToken(carer.getCarerId(), jwtProvider.getAppAccessTokenValiditySeconds());
         String refreshToken = jwtProvider.createRefreshToken(carer.getCarerId());
-        carer.updateRefreshToken(refreshToken, toKstLocalDateTime(jwtProvider.getRefreshTokenExpiry()));
-        return new AppLoginResponse(carer.getCarerId(), accessToken, refreshToken);
+        LocalDateTime expiresAt = toKstLocalDateTime(jwtProvider.getRefreshTokenExpiry());
+        carer.updateRefreshToken(refreshToken, expiresAt);
+        return new AppLoginResponse(
+                carer.getCarerId(), accessToken, refreshToken, DateTimes.toIsoString(expiresAt));
     }
 
     @Transactional
@@ -144,9 +154,10 @@ public class CarerService {
         String newAccessToken =
                 jwtProvider.createAccessToken(userId, jwtProvider.getAppAccessTokenValiditySeconds());
         String newRefreshToken = jwtProvider.createRefreshToken(userId);
-        carer.updateRefreshToken(newRefreshToken, toKstLocalDateTime(jwtProvider.getRefreshTokenExpiry()));
+        LocalDateTime expiresAt = toKstLocalDateTime(jwtProvider.getRefreshTokenExpiry());
+        carer.updateRefreshToken(newRefreshToken, expiresAt);
 
-        return new RefreshTokenResponse(newAccessToken, newRefreshToken);
+        return new RefreshTokenResponse(newAccessToken, newRefreshToken, DateTimes.toIsoString(expiresAt));
     }
 
     public WebMeResponse getWebMe(Integer userId) {
@@ -158,7 +169,8 @@ public class CarerService {
                 carer.getRegion(),
                 carer.isDiagnosisCompleted(),
                 carer.isAppInstalled(),
-                carer.getInstallPromptCount());
+                carer.getInstallPromptCount(),
+                carer.isNotificationEnabled());
     }
 
     public AppMeResponse getAppMe(Integer userId) {
@@ -172,7 +184,8 @@ public class CarerService {
         Carer carer = getCarerOrThrow(userId);
         checkEmailDuplicate(carer, request.email());
         String encodedPassword = encodeIfPresent(request.password());
-        carer.updateProfile(request.name(), request.email(), encodedPassword, request.region(), null);
+        carer.updateProfile(
+                request.name(), request.email(), encodedPassword, request.region(), request.notificationEnabled());
         return new MessageResponse("회원 정보가 수정되었습니다.");
     }
 
@@ -187,14 +200,15 @@ public class CarerService {
     }
 
     @Transactional
-    public MessageResponse updateAppInstallStatus(Integer userId, AppInstallStatusRequest request) {
+    public AppInstallStatusResponse updateAppInstallStatus(Integer userId, AppInstallStatusRequest request) {
         Carer carer = getCarerOrThrow(userId);
-        if (Boolean.TRUE.equals(request.installed())) {
+        if (Boolean.TRUE.equals(request.appInstalled())) {
             carer.markAppInstalled();
         } else {
             carer.increaseInstallPromptCount();
         }
-        return new MessageResponse("처리되었습니다.");
+        return new AppInstallStatusResponse(
+                "처리되었습니다.", carer.isAppInstalled(), carer.getInstallPromptCount());
     }
 
     /** 회원 탈퇴(웹/앱 공통). 연관된 saved_policies/todos/notifications/interest_policy_types를 먼저 정리한 뒤 유저를 삭제한다. */
@@ -209,6 +223,13 @@ public class CarerService {
             savedPolicyRepository.deleteAllByCarer(carer);
         }
         interestPolicyTypeRepository.deleteAllByCarer(carer);
+
+        // 챗봇/진단 관련 데이터도 함께 정리한다 (FK 제약 위반 방지).
+        userDocumentHistoryRepository.deleteAll(userDocumentHistoryRepository.findAllWithDetailByCarer(carer));
+        matchedPolicyRepository.deleteAll(matchedPolicyRepository.findAllWithPolicyByCarer(carer));
+        carerIncomeSignalRepository.deleteAll(carerIncomeSignalRepository.findAllByCarerOrderBySignalIdAsc(carer));
+        caredRepository.deleteAll(caredRepository.findAllByCarerOrderByCaredIdAsc(carer));
+
         carerRepository.delete(carer);
 
         return new MessageResponse("회원 탈퇴가 완료되었습니다.");

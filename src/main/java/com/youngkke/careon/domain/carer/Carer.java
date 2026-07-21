@@ -226,4 +226,39 @@ public class Carer {
         this.resetToken = null;
         this.resetTokenExpiresAt = null;
     }
+
+    /** 2단계 진단 프로필 부분 수정. null인 값은 그대로 유지하고, 값이 있는 필드만 갱신한다. */
+    public void updateDiagnosisProfile(com.youngkke.careon.domain.carer.dto.DiagnosisProfileRequest request) {
+        if (request.age() != null) this.age = request.age();
+        if (request.householdMembersCount() != null) this.householdMembersCount = request.householdMembersCount();
+        if (request.caredCount() != null) this.caredCount = request.caredCount();
+        if (request.knowHousingType() != null) this.knowHousingType = request.knowHousingType();
+        if (request.housingType() != null) this.housingType = request.housingType();
+        if (request.biggestBurdenType() != null) this.biggestBurdenType = request.biggestBurdenType();
+        if (request.burdenTypeReasonSummary() != null) this.burdenTypeReasonSummary = request.burdenTypeReasonSummary();
+        if (request.dailyCareHoursSelf() != null) this.dailyCareHoursSelf = request.dailyCareHoursSelf();
+        if (request.dailyCareHoursHousehold() != null) this.dailyCareHoursHousehold = request.dailyCareHoursHousehold();
+        if (request.hasBackupCaregiver() != null) this.hasBackupCaregiver = request.hasBackupCaregiver();
+        if (request.backupCaregiverRelation() != null) this.backupCaregiverRelation = request.backupCaregiverRelation();
+        if (request.medicalBurdenLevel() != null) this.medicalBurdenLevel = request.medicalBurdenLevel();
+        if (request.isStudent() != null) this.isStudent = request.isStudent();
+        if (request.hasIncomeActivity() != null) this.hasIncomeActivity = request.hasIncomeActivity();
+        if (request.incomeValueStatus() != null) this.incomeValueStatus = request.incomeValueStatus();
+        if (request.incomeAssessmentCriteria() != null) this.incomeAssessmentCriteria = request.incomeAssessmentCriteria();
+        if (request.incomeValue() != null) this.incomeValue = request.incomeValue();
+        if (request.medianIncomeRatio() != null) this.medianIncomeRatio = request.medianIncomeRatio();
+        if (request.incomeVariabilityType() != null) this.incomeVariabilityType = request.incomeVariabilityType();
+        if (request.incomeRelatedUtterance() != null) this.incomeRelatedUtterance = request.incomeRelatedUtterance();
+        if (request.hasBasicLivelihoodSupport() != null) this.hasBasicLivelihoodSupport = request.hasBasicLivelihoodSupport();
+        if (request.hasBasicLivelihoodSupportSource() != null) this.hasBasicLivelihoodSupportSource = request.hasBasicLivelihoodSupportSource();
+        if (request.hasChaSangWi() != null) this.hasChaSangWi = request.hasChaSangWi();
+        if (request.hasChaSangWiSource() != null) this.hasChaSangWiSource = request.hasChaSangWiSource();
+        if (request.militaryServiceStatus() != null) this.militaryServiceStatus = request.militaryServiceStatus();
+        if (request.militaryServiceExtensionYears() != null) this.militaryServiceExtensionYears = request.militaryServiceExtensionYears();
+        if (request.housingDeposit() != null) this.housingDeposit = request.housingDeposit();
+        if (request.housingMonthlyRent() != null) this.housingMonthlyRent = request.housingMonthlyRent();
+        if (request.householdAssetValue() != null) this.householdAssetValue = request.householdAssetValue();
+        if (request.vehicleValue() != null) this.vehicleValue = request.vehicleValue();
+        if (request.financialDetailStatus() != null) this.financialDetailStatus = request.financialDetailStatus();
+    }
 }

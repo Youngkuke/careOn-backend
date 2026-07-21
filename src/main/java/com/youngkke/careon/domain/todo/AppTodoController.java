@@ -1,9 +1,9 @@
 package com.youngkke.careon.domain.todo;
 
 import com.youngkke.careon.domain.todo.dto.TodoCheckRequest;
+import com.youngkke.careon.domain.todo.dto.TodoCheckResponse;
 import com.youngkke.careon.domain.todo.dto.TodoListResponse;
 import com.youngkke.careon.global.auth.CurrentCarerId;
-import com.youngkke.careon.global.dto.MessageResponse;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -22,14 +22,18 @@ public class AppTodoController {
 
     private final TodoService todoService;
 
+    /** 투두 목록 조회. */
     @GetMapping
-    public ResponseEntity<List<TodoListResponse>> getList(@CurrentCarerId Integer userId) {
-        return ResponseEntity.ok(todoService.getList(userId));
+    public ResponseEntity<List<TodoListResponse>> getList(@CurrentCarerId Integer carerId) {
+        return ResponseEntity.ok(todoService.getList(carerId));
     }
 
+    /** 투두 체크/체크 해제. */
     @PatchMapping("/{todoId}")
-    public ResponseEntity<MessageResponse> updateChecked(
-            @CurrentCarerId Integer userId, @PathVariable Integer todoId, @Valid @RequestBody TodoCheckRequest request) {
-        return ResponseEntity.ok(todoService.updateChecked(userId, todoId, request));
+    public ResponseEntity<TodoCheckResponse> updateChecked(
+            @CurrentCarerId Integer carerId,
+            @PathVariable Integer todoId,
+            @Valid @RequestBody TodoCheckRequest request) {
+        return ResponseEntity.ok(todoService.updateChecked(carerId, todoId, request));
     }
 }

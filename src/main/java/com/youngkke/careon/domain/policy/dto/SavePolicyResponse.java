@@ -1,3 +1,4 @@
 package com.youngkke.careon.domain.policy.dto;
 
-public record SavePolicyResponse(Integer savedPolicyId, String message) {}
+/** 제도 저장 응답. */
+public record SavePolicyResponse(Integer savedPolicyId, Integer policyId, Boolean applied, String message) {}

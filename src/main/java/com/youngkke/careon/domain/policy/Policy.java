@@ -32,15 +32,20 @@ public class Policy {
     @Column(name = "policy_id")
     private Integer policyId;
 
+    /** 외부 데이터 파이프라인(AI 서버) 참조용 식별자. 백엔드 API 응답에는 노출하지 않는다. */
+    @Column(name = "external_ref", length = 255)
+    private String externalRef;
+
     @Column(name = "policy_name", nullable = false, length = 255)
     private String policyName;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "policy_type_id", nullable = false)
-    private PolicyType policyType;
+    /*
+     * 제도 유형은 다대다 구조로 변경되어 connect_policy_policy_types 테이블(ConnectPolicyPolicyType)로 연결된다.
+     * (기존 policy_type_id 단일 FK 컬럼은 DB에서 제거됨)
+     */
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "category", nullable = false, length = 20)
+    @Column(name = "category", length = 20)
     private PolicyCategory category;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -80,10 +85,12 @@ public class Policy {
     @Column(name = "contact", length = 100)
     private String contact;
 
-    // ===== 이하 신규 컬럼 (아직 로직 미사용, 스키마 매핑용) =====
-
     @Column(name = "deadline_type", length = 50)
     private String deadlineType;
+
+    /** 마감일 원문 텍스트 (예: "2025.9.12"). AI 데이터 파이프라인이 채운다. */
+    @Column(name = "deadline_date_raw", columnDefinition = "TEXT")
+    private String deadlineDateRaw;
 
     @Column(name = "application_region", length = 30)
     private String applicationRegion;

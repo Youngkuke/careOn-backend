@@ -1,15 +1,16 @@
 package com.youngkke.careon.domain.notification;
 
-import com.youngkke.careon.domain.notification.dto.NotificationResponse;
-import com.youngkke.careon.domain.policy.Policy;
 import com.youngkke.careon.domain.carer.Carer;
 import com.youngkke.careon.domain.carer.CarerRepository;
+import com.youngkke.careon.domain.notification.dto.NotificationResponse;
+import com.youngkke.careon.domain.notification.dto.ReadAllResponse;
+import com.youngkke.careon.domain.notification.dto.UnreadCountResponse;
+import com.youngkke.careon.domain.policy.Policy;
 import com.youngkke.careon.global.error.BusinessException;
 import com.youngkke.careon.global.error.ErrorCode;
+import com.youngkke.careon.global.util.DateTimes;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -20,34 +21,48 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class NotificationService {
 
-    private static final ZoneOffset KST = ZoneOffset.of("+09:00");
-
     private final NotificationRepository notificationRepository;
     private final CarerRepository carerRepository;
 
-    /** 알림 목록 조회 (최신순). 조회와 동시에 전부 읽음 처리한다 (별도 읽음 처리 API 없음). */
+    /**
+     * 알림 목록 조회 (최신순).
+     * 이 API는 읽음 처리를 하지 않는다. 사용자가 알림 화면을 확인한 뒤 앱이 read-all을 별도로 호출한다.
+     */
+    public List<NotificationResponse> getList(Integer carerId) {
+        Carer carer = getCarerOrThrow(carerId);
+        LocalDateTime now = LocalDateTime.now(DateTimes.KST);
+
+        return notificationRepository.findAllWithPolicyByCarer(carer).stream()
+                .map(notification -> toResponse(notification, now))
+                .toList();
+    }
+
+    /** 미읽음 알림 개수 조회. 종 아이콘 뱃지용. */
+    public UnreadCountResponse getUnreadCount(Integer carerId) {
+        Carer carer = getCarerOrThrow(carerId);
+        return new UnreadCountResponse(notificationRepository.countUnreadByCarer(carer));
+    }
+
+    /** 모든 미읽음 알림을 읽음 처리한다. */
     @Transactional
-    public List<NotificationResponse> getList(Integer userId) {
-        Carer carer = getCarerOrThrow(userId);
-        List<Notification> notifications = notificationRepository.findAllBySavedPolicy_CarerOrderBySentAtDesc(carer);
+    public ReadAllResponse readAll(Integer carerId) {
+        Carer carer = getCarerOrThrow(carerId);
+        List<Notification> unread = notificationRepository.findAllUnreadByCarer(carer);
+        unread.forEach(Notification::markAsRead);
 
-        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
-        List<NotificationResponse> responses =
-                notifications.stream().map(n -> toResponse(n, now)).toList();
-
-        notifications.forEach(Notification::markAsRead);
-
-        return responses;
+        return new ReadAllResponse(unread.size(), "모든 알림을 읽음 처리했습니다.");
     }
 
     private NotificationResponse toResponse(Notification notification, LocalDateTime now) {
         Policy policy = notification.getSavedPolicy().getPolicy();
         return new NotificationResponse(
                 notification.getNotificationId(),
+                notification.getSavedPolicy().getSavedPolicyId(),
                 policy.getPolicyId(),
                 policy.getPolicyName(),
                 notification.getNotificationType().name(),
-                notification.getSentAt().atOffset(KST),
+                DateTimes.toIsoString(notification.getSentAt()),
+                notification.isRead(),
                 toRelativeTime(notification.getSentAt(), now));
     }
 
@@ -79,7 +94,7 @@ public class NotificationService {
         return (days / 365) + "년 전";
     }
 
-    private Carer getCarerOrThrow(Integer userId) {
-        return carerRepository.findById(userId).orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED));
+    private Carer getCarerOrThrow(Integer carerId) {
+        return carerRepository.findById(carerId).orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED));
     }
 }

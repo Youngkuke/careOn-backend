@@ -1,6 +1,7 @@
 package com.youngkke.careon.domain.carer;
 
 import com.youngkke.careon.domain.carer.dto.AppInstallStatusRequest;
+import com.youngkke.careon.domain.carer.dto.AppInstallStatusResponse;
 import com.youngkke.careon.domain.carer.dto.LoginRequest;
 import com.youngkke.careon.domain.carer.dto.PasswordResetLinkRequest;
 import com.youngkke.careon.domain.carer.dto.PasswordResetRequest;
@@ -58,7 +59,7 @@ public class WebCarerController {
     }
 
     @PatchMapping("/me/app-install-status")
-    public ResponseEntity<MessageResponse> updateAppInstallStatus(
+    public ResponseEntity<AppInstallStatusResponse> updateAppInstallStatus(
             @CurrentCarerId Integer userId, @Valid @RequestBody AppInstallStatusRequest request) {
         return ResponseEntity.ok(carerService.updateAppInstallStatus(userId, request));
     }
