@@ -16,9 +16,9 @@ public interface PolicyRepository extends JpaRepository<Policy, Integer> {
             join fetch p.agency a
             where (:category is null or p.category = :category)
               and (:agencyId is null or a.agencyId = :agencyId)
-              and (:keyword is null
-                   or lower(p.policyName) like lower(concat('%', :keyword, '%'))
-                   or lower(p.summary) like lower(concat('%', :keyword, '%')))
+              and (cast(:keyword as string) is null
+                   or lower(p.policyName) like lower(concat('%', cast(:keyword as string), '%'))
+                   or lower(p.summary) like lower(concat('%', cast(:keyword as string), '%')))
               and (:hasTypeFilter = false
                    or p.policyId in (select c.policy.policyId from ConnectPolicyPolicyType c
                                      where c.policyType.policyTypeId in :typeIds))
