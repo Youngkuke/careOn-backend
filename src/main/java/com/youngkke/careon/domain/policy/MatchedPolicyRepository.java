@@ -14,4 +14,11 @@ public interface MatchedPolicyRepository extends JpaRepository<MatchedPolicy, In
     List<MatchedPolicy> findAllWithPolicyByCarer(@Param("carer") Carer carer);
 
     Optional<MatchedPolicy> findByMatchedPolicyIdAndCarer(Integer matchedPolicyId, Carer carer);
+
+    /**
+     * saved_policy와 matched_policy 사이에 FK가 없어서, (carer, policy) 쌍으로 최선 매칭한다.
+     * 같은 (carer, policy) 조합에 매칭 결과가 여러 건 쌓일 수 있는 구조라면 이 조회는 안정적이지 않으니
+     * 실제로 그런 케이스가 있는지 확인이 필요하다 (현재는 유니크 제약이 없음).
+     */
+    Optional<MatchedPolicy> findFirstByCarerAndPolicy(Carer carer, Policy policy);
 }

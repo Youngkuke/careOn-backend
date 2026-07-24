@@ -9,8 +9,13 @@ public record TodoListResponse(
         Integer policyId,
         String policyName,
         String applicationDeadline,
-        String link,
+        String applicationPeriodType,
         boolean isExpired,
+        String applicationStatus,
+        boolean isApplied,
+        String appliedAt,
+        String resultDate,
+        String link,
         List<TodoDocumentDetail> documents) {
 
     public record TodoDocumentDetail(

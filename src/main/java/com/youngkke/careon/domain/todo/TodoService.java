@@ -15,6 +15,7 @@ import com.youngkke.careon.global.error.BusinessException;
 import com.youngkke.careon.global.error.ErrorCode;
 import com.youngkke.careon.global.util.DateTimes;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -32,32 +33,27 @@ public class TodoService {
 
     /**
      * 투두 목록 조회 (앱).
-     * - 마감 전 제도: 서류 체크리스트 포함 (is_expired=false)
-     * - 마감 지난 제도 중 신청 여부 미응답(applied가 null): 서류 없이 포함 (is_expired=true) → 예/아니오 버튼용
-     * - 마감 지난 제도 중 이미 "예"로 응답한 건(applied=true)은 제외
+     * - 신청 완료 제도(application_status=APPLIED)도 포함해서 반환한다. 프런트가 is_applied로 탭을 나눈다.
+     * - 마감일이 있는 제도: 마감 전에는 is_expired=false, 마감 지나면 is_expired=true (신청 여부 질문용).
+     * - 마감일이 없는(상시/누락) 제도: is_expired는 항상 false. application_period_type으로 상시 여부를 구분한다.
+     * - 서류 체크리스트는 아직 신청 전(PREPARING)이고 마감 전(is_expired=false)일 때만 내려준다.
      */
     public List<TodoListResponse> getList(Integer carerId) {
         Carer carer = getCarerOrThrow(carerId);
         LocalDate today = DateTimes.today();
 
         return savedPolicyRepository.findAllWithPolicyByCarer(carer).stream()
-                .filter(savedPolicy -> {
-                    Policy policy = savedPolicy.getPolicy();
-                    if (policy.getApplicationDeadline() == null) {
-                        return false;
-                    }
-                    boolean expired = policy.getApplicationDeadline().toLocalDate().isBefore(today);
-                    return !expired || savedPolicy.getApplied() == null;
-                })
                 .map(savedPolicy -> toTodoListResponse(savedPolicy, today))
                 .toList();
     }
 
     private TodoListResponse toTodoListResponse(SavedPolicy savedPolicy, LocalDate today) {
         Policy policy = savedPolicy.getPolicy();
-        boolean expired = policy.getApplicationDeadline().toLocalDate().isBefore(today);
+        LocalDateTime deadline = policy.getApplicationDeadline();
+        boolean expired = deadline != null && deadline.toLocalDate().isBefore(today);
+        boolean applied = savedPolicy.isApplied();
 
-        List<TodoDocumentDetail> documents = expired
+        List<TodoDocumentDetail> documents = (expired || applied)
                 ? List.of()
                 : todoRepository.findAllBySavedPolicy(savedPolicy).stream()
                         .map(this::toTodoDocumentDetail)
@@ -67,9 +63,14 @@ public class TodoService {
                 savedPolicy.getSavedPolicyId(),
                 policy.getPolicyId(),
                 policy.getPolicyName(),
-                policy.getApplicationDeadline().toLocalDate().toString(),
-                policy.getLink(),
+                deadline == null ? null : deadline.toLocalDate().toString(),
+                policy.getApplicationPeriodTypeOrDefault().name(),
                 expired,
+                savedPolicy.getApplicationStatus().name(),
+                applied,
+                DateTimes.toIsoString(savedPolicy.getAppliedAt()),
+                DateTimes.toDateString(policy.getResultDate()),
+                policy.getLink(),
                 documents);
     }
 

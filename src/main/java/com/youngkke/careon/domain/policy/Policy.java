@@ -4,6 +4,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.Transient;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -130,4 +131,23 @@ public class Policy {
 
     @Column(name = "is_lifetime_limit_once")
     private Boolean isLifetimeLimitOnce;
+
+    /**
+     * 신청 기간 유형. FIXED/ALWAYS_OPEN/UNKNOWN.
+     * 데이터 파이프라인이 아직 이 값을 채우지 않으면 null이며, 이 경우 getApplicationPeriodTypeOrDefault()가
+     * application_deadline 존재 여부로 최선 추정치를 반환한다 (deadline 있으면 FIXED, 없으면 UNKNOWN).
+     * "상시 신청 확정"은 데이터 파이프라인/운영이 ALWAYS_OPEN을 명시적으로 채워야 확정된다.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "application_period_type", length = 20)
+    private ApplicationPeriodType applicationPeriodType;
+
+    /** application_period_type이 비어 있을 때 마감일 존재 여부로 최선 추정치를 계산한다. */
+    @Transient
+    public ApplicationPeriodType getApplicationPeriodTypeOrDefault() {
+        if (applicationPeriodType != null) {
+            return applicationPeriodType;
+        }
+        return applicationDeadline != null ? ApplicationPeriodType.FIXED : ApplicationPeriodType.UNKNOWN;
+    }
 }

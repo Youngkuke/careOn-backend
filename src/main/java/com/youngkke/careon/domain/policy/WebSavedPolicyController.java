@@ -1,5 +1,7 @@
 package com.youngkke.careon.domain.policy;
 
+import com.youngkke.careon.domain.policy.dto.BenefitStatusRequest;
+import com.youngkke.careon.domain.policy.dto.BenefitStatusResponse;
 import com.youngkke.careon.domain.policy.dto.SavePolicyRequest;
 import com.youngkke.careon.domain.policy.dto.SavePolicyResponse;
 import com.youngkke.careon.domain.policy.dto.SavedPolicyResponse;
@@ -11,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -39,5 +42,14 @@ public class WebSavedPolicyController {
     public ResponseEntity<MessageResponse> cancel(
             @CurrentCarerId Integer userId, @PathVariable Integer savedPolicyId) {
         return ResponseEntity.ok(savedPolicyService.cancel(userId, savedPolicyId));
+    }
+
+    /** 신청 완료한 제도의 수혜 여부 기록/수정. 결과 발표일이 없어도 언제든 호출 가능하다. */
+    @PatchMapping("/{savedPolicyId}/benefit")
+    public ResponseEntity<BenefitStatusResponse> updateBenefit(
+            @CurrentCarerId Integer userId,
+            @PathVariable Integer savedPolicyId,
+            @Valid @RequestBody BenefitStatusRequest request) {
+        return ResponseEntity.ok(savedPolicyService.updateBenefitStatus(userId, savedPolicyId, request));
     }
 }

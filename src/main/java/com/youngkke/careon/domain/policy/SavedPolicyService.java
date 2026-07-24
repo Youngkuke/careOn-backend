@@ -6,6 +6,8 @@ import com.youngkke.careon.domain.document.ConnectPolicyDocument;
 import com.youngkke.careon.domain.document.ConnectPolicyDocumentRepository;
 import com.youngkke.careon.domain.notification.NotificationRepository;
 import com.youngkke.careon.domain.policy.dto.AppSavedPolicyResponse;
+import com.youngkke.careon.domain.policy.dto.BenefitStatusRequest;
+import com.youngkke.careon.domain.policy.dto.BenefitStatusResponse;
 import com.youngkke.careon.domain.policy.dto.SavePolicyRequest;
 import com.youngkke.careon.domain.policy.dto.SavePolicyResponse;
 import com.youngkke.careon.domain.policy.dto.SavedPolicyAppliedResponse;
@@ -41,6 +43,7 @@ public class SavedPolicyService {
     private final NotificationRepository notificationRepository;
     private final TodoRepository todoRepository;
     private final PolicySupport policySupport;
+    private final MatchedPolicyRepository matchedPolicyRepository;
 
     /** 제도 저장. 저장 성공 시 connect_policy_documents 기준으로 필요 서류 투두를 자동 생성한다. */
     @Transactional
@@ -90,8 +93,8 @@ public class SavedPolicyService {
     }
 
     /**
-     * 마감 지난 저장 제도에 대해 "신청했어요(예)"를 기록한다. (앱 전용)
-     * 기록된 제도는 이후 투두 목록 조회에서 제외된다.
+     * 마감 지난 제도 또는 상시 신청 제도에 대해 "신청했어요(예)"를 기록한다. (앱 전용)
+     * 신청 완료 후에도 투두 목록에는 계속 포함되며, is_applied=true로 구분된다.
      */
     @Transactional
     public SavedPolicyAppliedResponse markApplied(Integer carerId, Integer savedPolicyId) {
@@ -103,10 +106,18 @@ public class SavedPolicyService {
         savedPolicy.markApplied();
 
         return new SavedPolicyAppliedResponse(
-                savedPolicy.getSavedPolicyId(), savedPolicy.getApplied(), "저장되었습니다.");
+                savedPolicy.getSavedPolicyId(),
+                savedPolicy.isApplied(),
+                savedPolicy.getApplicationStatus(),
+                DateTimes.toIsoString(savedPolicy.getAppliedAt()),
+                "저장되었습니다.");
     }
 
-    /** 저장한 제도 목록 조회 (웹). 카드 표시/상세 진입용 제도 정보만 반환한다. */
+    /**
+     * 저장한 제도 목록 조회 (웹). 카드 표시/상세 진입 정보에 더해 신청/수혜 상태를 함께 반환한다.
+     * matched_policy_id는 saved_policy와 FK로 연결돼 있지 않아 (carer, policy) 기준 최선 조회 결과이며,
+     * 매칭 이력이 없는 제도는 null이다.
+     */
     public List<SavedPolicyResponse> getWebList(Integer carerId) {
         Carer carer = getCarerOrThrow(carerId);
         List<SavedPolicy> savedPolicies = savedPolicyRepository.findAllWithPolicyByCarer(carer);
@@ -117,20 +128,53 @@ public class SavedPolicyService {
         return savedPolicies.stream()
                 .map(savedPolicy -> {
                     Policy policy = savedPolicy.getPolicy();
+                    Integer matchedPolicyId = matchedPolicyRepository
+                            .findFirstByCarerAndPolicy(carer, policy)
+                            .map(MatchedPolicy::getMatchedPolicyId)
+                            .orElse(null);
+
                     return new SavedPolicyResponse(
                             savedPolicy.getSavedPolicyId(),
                             policy.getPolicyId(),
+                            matchedPolicyId,
                             policy.getPolicyName(),
                             policy.getAgency().getAgencyId(),
                             policy.getAgency().getAgencyName(),
                             policy.getSummary(),
                             policy.getSupportPeriod(),
                             DateTimes.toIsoString(policy.getApplicationDeadline()),
+                            savedPolicy.isApplied(),
+                            savedPolicy.getApplicationStatus().name(),
+                            DateTimes.toIsoString(savedPolicy.getAppliedAt()),
+                            DateTimes.toIsoString(policy.getResultDate()),
+                            savedPolicy.getBenefitStatus().name(),
+                            DateTimes.toIsoString(savedPolicy.getBenefitCheckedAt()),
                             policy.getLink(),
                             typesByPolicy.getOrDefault(policy.getPolicyId(), List.of()),
                             policySupport.loadDocuments(policy));
                 })
                 .toList();
+    }
+
+    /**
+     * 웹에서 신청 완료한 제도의 수혜 여부를 기록/수정한다.
+     * 결과 발표일 유무와 관계없이 유저가 언제든 직접 입력할 수 있다.
+     */
+    @Transactional
+    public BenefitStatusResponse updateBenefitStatus(
+            Integer carerId, Integer savedPolicyId, BenefitStatusRequest request) {
+        Carer carer = getCarerOrThrow(carerId);
+        SavedPolicy savedPolicy = savedPolicyRepository
+                .findBySavedPolicyIdAndCarer(savedPolicyId, carer)
+                .orElseThrow(() -> new BusinessException(ErrorCode.SAVED_POLICY_NOT_FOUND));
+
+        savedPolicy.updateBenefitStatus(request.benefitStatus());
+
+        return new BenefitStatusResponse(
+                savedPolicy.getSavedPolicyId(),
+                savedPolicy.getBenefitStatus().name(),
+                DateTimes.toIsoString(savedPolicy.getBenefitCheckedAt()),
+                "수혜 여부가 수정되었습니다.");
     }
 
     /**
