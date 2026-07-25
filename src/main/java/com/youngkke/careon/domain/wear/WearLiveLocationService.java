@@ -7,6 +7,7 @@ import com.youngkke.careon.domain.carer.CaredRepository;
 import com.youngkke.careon.domain.wear.dto.LiveLocationResponse;
 import com.youngkke.careon.domain.wear.dto.LiveLocationTrackingRequest;
 import com.youngkke.careon.domain.wear.dto.LiveLocationTrackingResponse;
+import com.youngkke.careon.domain.wear.dto.LiveLocationTrackingStatusResponse;
 import com.youngkke.careon.domain.wear.dto.LiveLocationUpdateRequest;
 import com.youngkke.careon.domain.wear.dto.LiveLocationUpdateResponse;
 import com.youngkke.careon.domain.wear.dto.WearDeviceStatusResponse;
@@ -24,6 +25,9 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class WearLiveLocationService {
+
+    /** 워치가 GPS를 조회/전송하는 권장 주기. 대상자별로 다를 필요가 없어 상수로 고정한다. */
+    private static final int LIVE_LOCATION_INTERVAL_SECONDS = 10;
 
     private final CarerRepository carerRepository;
     private final CaredRepository caredRepository;
@@ -73,6 +77,15 @@ public class WearLiveLocationService {
                 DateTimes.parseToKst(request.capturedAt()));
         wearDevice.touchLastSeen(LocalDateTime.now());
         return new LiveLocationUpdateResponse(true);
+    }
+
+    /** 워치에서 현재 추적을 계속해도 되는지 확인. */
+    public LiveLocationTrackingStatusResponse getTrackingStatusForWear(Integer wearDeviceId) {
+        WearDevice wearDevice = wearDeviceRepository
+                .findById(wearDeviceId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.WEAR_DEVICE_NOT_FOUND));
+        return new LiveLocationTrackingStatusResponse(
+                wearDevice.isLiveLocationEnabled(), LIVE_LOCATION_INTERVAL_SECONDS);
     }
 
     private WearDevice getPairedWearDeviceOrThrow(Integer carerId) {
