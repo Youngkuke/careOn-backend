@@ -42,14 +42,30 @@ public class WearAuthService {
     private final JwtProvider jwtProvider;
     private final PasswordEncoder passwordEncoder;
 
-    /** 보호자 모바일에서 워치 연결 코드 발급. */
+    /** 보호자 모바일에서 워치 연결 코드 발급 (cared_id를 이미 아는 경우). */
     @Transactional
     public WearPairingCodeResponse issuePairingCode(Integer carerId, Integer caredId) {
         Carer carer = getCarerOrThrow(carerId);
         Cared cared = caredRepository
                 .findByCaredIdAndCarer(caredId, carer)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CARED_NOT_FOUND));
+        return issuePairingCodeFor(carer, cared);
+    }
 
+    /**
+     * 돌봄 대상자 등록 화면 없이 워치 연결만 쓰는 앱을 위한 발급.
+     * 보호자에게 연결된 cared가 없으면 내부적으로 1개 자동 생성하고, 있으면 그중 가장 먼저 만든 걸 재사용한다.
+     */
+    @Transactional
+    public WearPairingCodeResponse issuePairingCodeAutoProvision(Integer carerId) {
+        Carer carer = getCarerOrThrow(carerId);
+        Cared cared = caredRepository.findAllByCarerOrderByCaredIdAsc(carer).stream()
+                .findFirst()
+                .orElseGet(() -> caredRepository.save(Cared.builder().carer(carer).build()));
+        return issuePairingCodeFor(carer, cared);
+    }
+
+    private WearPairingCodeResponse issuePairingCodeFor(Carer carer, Cared cared) {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime expiresAt = now.plusSeconds(PAIRING_CODE_VALIDITY_SECONDS);
 
