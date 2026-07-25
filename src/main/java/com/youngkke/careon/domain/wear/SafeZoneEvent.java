@@ -69,6 +69,10 @@ public class SafeZoneEvent {
     @Column(name = "accuracy_meters")
     private Double accuracyMeters;
 
+    /** 워치가 GPS로 실제 위치를 측정한 시각. 이탈을 감지/확정한 시각(detectedAt)과 미세하게 다를 수 있다. */
+    @Column(name = "location_captured_at")
+    private LocalDateTime locationCapturedAt;
+
     @Column(name = "detected_at", nullable = false)
     private LocalDateTime detectedAt;
 

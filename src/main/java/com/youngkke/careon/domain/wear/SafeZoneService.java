@@ -4,8 +4,10 @@ import com.youngkke.careon.domain.carer.Carer;
 import com.youngkke.careon.domain.carer.CarerRepository;
 import com.youngkke.careon.domain.carer.Cared;
 import com.youngkke.careon.domain.carer.CaredRepository;
+import com.youngkke.careon.domain.wear.dto.ActiveSafeZoneEventResponse;
 import com.youngkke.careon.domain.wear.dto.SafeZoneEventCreateRequest;
 import com.youngkke.careon.domain.wear.dto.SafeZoneEventCreateResponse;
+import com.youngkke.careon.domain.wear.dto.SafeZoneEventLocationResponse;
 import com.youngkke.careon.domain.wear.dto.SafeZoneEventRespondRequest;
 import com.youngkke.careon.domain.wear.dto.SafeZoneEventRespondResponse;
 import com.youngkke.careon.domain.wear.dto.SafeZoneResponse;
@@ -105,6 +107,7 @@ public class SafeZoneService {
                 .latitude(request.location().latitude())
                 .longitude(request.location().longitude())
                 .accuracyMeters(request.location().accuracyMeters())
+                .locationCapturedAt(DateTimes.parseToKst(request.location().capturedAt()))
                 .detectedAt(DateTimes.parseToKst(request.detectedAt()))
                 .build();
 
@@ -118,6 +121,15 @@ public class SafeZoneService {
 
         wearDevice.touchLastSeen(LocalDateTime.now());
         return toCreateResponse(event);
+    }
+
+    /** 보호자 모바일에서 현재 활성(워치 사용자 미응답) 이탈 이벤트 조회. 없으면 null. */
+    public ActiveSafeZoneEventResponse getActiveEventForApp(Integer carerId, Integer caredId) {
+        Cared cared = getOwnedCaredOrThrow(carerId, caredId);
+        return safeZoneEventRepository
+                .findFirstByCaredAndResponseIsNullOrderByDetectedAtDesc(cared)
+                .map(this::toActiveResponse)
+                .orElse(null);
     }
 
     /** 워치 사용자(돌봄 대상자)의 이탈 응답. */
@@ -138,6 +150,24 @@ public class SafeZoneService {
 
     private SafeZoneEventCreateResponse toCreateResponse(SafeZoneEvent event) {
         return new SafeZoneEventCreateResponse(event.getSafeZoneEventId(), event.getStatus());
+    }
+
+    private ActiveSafeZoneEventResponse toActiveResponse(SafeZoneEvent event) {
+        SafeZoneEventLocationResponse location = new SafeZoneEventLocationResponse(
+                event.getLatitude(),
+                event.getLongitude(),
+                event.getAccuracyMeters(),
+                DateTimes.toIsoString(event.getLocationCapturedAt()));
+
+        return new ActiveSafeZoneEventResponse(
+                event.getSafeZoneEventId(),
+                event.getSafeZone().getSafeZoneId(),
+                event.getCared().getCaredId(),
+                event.getStatus(),
+                event.getResponse(),
+                location,
+                DateTimes.toIsoString(event.getDetectedAt()),
+                DateTimes.toIsoString(event.getRespondedAt()));
     }
 
     private SafeZoneResponse toResponse(SafeZone safeZone) {
