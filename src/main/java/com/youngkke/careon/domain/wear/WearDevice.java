@@ -19,7 +19,8 @@ import lombok.NoArgsConstructor;
 
 /**
  * 페어링된 워치 기기. 돌봄 대상자 1명당 1대만 연결 가능하도록 cared_id에 유니크 제약을 둔다.
- * refreshTokenHash는 평문을 저장하지 않고 BCrypt 해시로 저장한다 (개인정보 최소화 방침).
+ * refreshTokenHash는 평문을 저장하지 않고 SHA-256 해시로 저장한다 (개인정보 최소화 방침).
+ * 실시간 위치 공유는 이력이 아니라 최신 위치 1건만 이 row에 덮어써서 보관한다.
  */
 @Entity
 @Table(name = "wear_device")
@@ -47,6 +48,25 @@ public class WearDevice {
     @Column(name = "last_seen_at")
     private LocalDateTime lastSeenAt;
 
+    @Column(name = "live_location_enabled", nullable = false)
+    @Builder.Default
+    private boolean liveLocationEnabled = false;
+
+    @Column(name = "live_location_updated_at")
+    private LocalDateTime liveLocationUpdatedAt;
+
+    @Column(name = "live_latitude")
+    private Double liveLatitude;
+
+    @Column(name = "live_longitude")
+    private Double liveLongitude;
+
+    @Column(name = "live_accuracy_meters")
+    private Double liveAccuracyMeters;
+
+    @Column(name = "live_captured_at")
+    private LocalDateTime liveCapturedAt;
+
     /** 재로그인(refresh) 시 refreshToken 해시를 회전시킨다. */
     public void rotateRefreshToken(String refreshTokenHash) {
         this.refreshTokenHash = refreshTokenHash;
@@ -63,5 +83,19 @@ public class WearDevice {
 
     public void touchLastSeen(LocalDateTime now) {
         this.lastSeenAt = now;
+    }
+
+    /** 보호자가 실시간 위치 공유를 켜거나 끈다. */
+    public void setLiveLocationEnabled(boolean enabled, LocalDateTime now) {
+        this.liveLocationEnabled = enabled;
+        this.liveLocationUpdatedAt = now;
+    }
+
+    /** 워치가 보낸 최신 위치로 덮어쓴다 (이력 아님, 최신 1건만 유지). */
+    public void updateLiveLocation(Double latitude, Double longitude, Double accuracyMeters, LocalDateTime capturedAt) {
+        this.liveLatitude = latitude;
+        this.liveLongitude = longitude;
+        this.liveAccuracyMeters = accuracyMeters;
+        this.liveCapturedAt = capturedAt;
     }
 }
