@@ -95,7 +95,12 @@ public class WearAuthService {
         String refreshToken = jwtProvider.createWearRefreshToken(wearDevice.getWearDeviceId());
         wearDevice.rotateRefreshToken(passwordEncoder.encode(refreshToken));
 
-        return new WearPairResponse(accessToken, refreshToken, toCaredResponse(cared));
+        return new WearPairResponse(
+                wearDevice.getWearDeviceId(),
+                accessToken,
+                refreshToken,
+                jwtProvider.getWearAccessTokenValiditySeconds(),
+                toCaredResponse(cared));
     }
 
     /** 워치 access token 갱신. refreshToken도 함께 회전시킨다. */
@@ -124,7 +129,8 @@ public class WearAuthService {
         wearDevice.rotateRefreshToken(passwordEncoder.encode(newRefreshToken));
         wearDevice.touchLastSeen(LocalDateTime.now());
 
-        return new WearRefreshResponse(newAccessToken, newRefreshToken);
+        return new WearRefreshResponse(
+                newAccessToken, newRefreshToken, jwtProvider.getWearAccessTokenValiditySeconds());
     }
 
     private String generateUnusedCode(LocalDateTime now) {
