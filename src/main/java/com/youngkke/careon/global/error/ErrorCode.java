@@ -39,7 +39,16 @@ public enum ErrorCode {
     TODO_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 투두 항목입니다."),
 
     // Notification
-    NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 알림입니다.");
+    NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 알림입니다."),
+
+    // Wear (워치 연동)
+    WEAR_PAIRING_CODE_INVALID(HttpStatus.BAD_REQUEST, "유효하지 않거나 만료된 연결 코드입니다."),
+    WEAR_DEVICE_NOT_FOUND(HttpStatus.UNAUTHORIZED, "워치 인증이 필요합니다."),
+    WEAR_REFRESH_TOKEN_INVALID(HttpStatus.UNAUTHORIZED, "워치 재인증이 필요합니다."),
+    IDEMPOTENCY_KEY_MISSING(HttpStatus.BAD_REQUEST, "Idempotency-Key 헤더가 필요합니다."),
+    EMERGENCY_EVENT_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 긴급 이벤트입니다."),
+    SAFE_ZONE_NOT_FOUND(HttpStatus.NOT_FOUND, "설정된 안심 구역이 없습니다."),
+    SAFE_ZONE_EVENT_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 안심 구역 이탈 이벤트입니다.");
 
     private final HttpStatus status;
     private final String message;

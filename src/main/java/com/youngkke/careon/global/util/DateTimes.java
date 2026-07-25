@@ -2,6 +2,7 @@ package com.youngkke.careon.global.util;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -26,5 +27,12 @@ public final class DateTimes {
 
     public static LocalDate today() {
         return LocalDate.now(KST);
+    }
+
+    /** 워치 등 클라이언트가 보낸 ISO-8601 일시(오프셋 불문, 예: ...Z 또는 +09:00)를 KST LocalDateTime으로 변환한다. */
+    public static LocalDateTime parseToKst(String isoDateTime) {
+        return isoDateTime == null
+                ? null
+                : OffsetDateTime.parse(isoDateTime).atZoneSameInstant(KST).toLocalDateTime();
     }
 }

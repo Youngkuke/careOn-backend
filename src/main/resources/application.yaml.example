@@ -40,6 +40,11 @@ jwt:
   app-access-token-validity-seconds: 3600
   refresh-token-validity-seconds: 7776000
 
+wear:
+  # 워치 access/refresh token 유효 시간 (jwt.secret과 동일한 키로 서명함)
+  access-token-validity-seconds: 3600
+  refresh-token-validity-seconds: 15552000
+
 app:
   # 프론트엔드 비밀번호 재설정 페이지 주소. 실제 프론트 배포되면 이 값으로 바꿔주세요.
   password-reset-url: http://localhost:3000/reset-password
