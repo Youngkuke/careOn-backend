@@ -21,7 +21,6 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,7 +39,6 @@ public class WearAuthService {
     private final WearDeviceRepository wearDeviceRepository;
     private final WearPairingCodeRepository wearPairingCodeRepository;
     private final JwtProvider jwtProvider;
-    private final PasswordEncoder passwordEncoder;
 
     /** 보호자 모바일에서 워치 연결 코드 발급 (cared_id를 이미 아는 경우). */
     @Transactional
@@ -109,7 +107,9 @@ public class WearAuthService {
 
         String accessToken = jwtProvider.createWearAccessToken(wearDevice.getWearDeviceId());
         String refreshToken = jwtProvider.createWearRefreshToken(wearDevice.getWearDeviceId());
-        wearDevice.rotateRefreshToken(passwordEncoder.encode(refreshToken));
+        // BCrypt는 72바이트 넘는 입력에서 예외를 던지는데 JWT는 항상 그보다 길다. refreshToken은 이미
+        // 고 엔트로피 랜덤값이라 브루트포스 방어용 salt/slow-hash가 필요 없어서 SHA-256으로 충분하다.
+        wearDevice.rotateRefreshToken(sha256(refreshToken));
 
         return new WearPairResponse(
                 wearDevice.getWearDeviceId(),
@@ -136,13 +136,13 @@ public class WearAuthService {
         WearDevice wearDevice = wearDeviceRepository
                 .findById(wearDeviceId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.WEAR_REFRESH_TOKEN_INVALID));
-        if (!passwordEncoder.matches(refreshToken, wearDevice.getRefreshTokenHash())) {
+        if (!sha256(refreshToken).equals(wearDevice.getRefreshTokenHash())) {
             throw new BusinessException(ErrorCode.WEAR_REFRESH_TOKEN_INVALID);
         }
 
         String newAccessToken = jwtProvider.createWearAccessToken(wearDeviceId);
         String newRefreshToken = jwtProvider.createWearRefreshToken(wearDeviceId);
-        wearDevice.rotateRefreshToken(passwordEncoder.encode(newRefreshToken));
+        wearDevice.rotateRefreshToken(sha256(newRefreshToken));
         wearDevice.touchLastSeen(LocalDateTime.now());
 
         return new WearRefreshResponse(
