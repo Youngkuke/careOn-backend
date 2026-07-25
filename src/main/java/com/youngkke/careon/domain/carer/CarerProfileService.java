@@ -27,6 +27,14 @@ public class CarerProfileService {
     private final CaredRepository caredRepository;
     private final CarerIncomeSignalRepository carerIncomeSignalRepository;
 
+    /** 내 돌봄 대상자 목록 조회 (앱). 워치 페어링 등에서 cared_id를 선택할 때 사용한다. */
+    public List<CaredResponse> getCaredList(Integer carerId) {
+        Carer carer = getCarerOrThrow(carerId);
+        return caredRepository.findAllByCarerOrderByCaredIdAsc(carer).stream()
+                .map(this::toCaredResponse)
+                .toList();
+    }
+
     /** 내 진단 프로필 조회 (돌봄 대상자, 소득 추론 근거 포함). */
     public DiagnosisProfileResponse getDiagnosisProfile(Integer carerId) {
         Carer carer = getCarerOrThrow(carerId);

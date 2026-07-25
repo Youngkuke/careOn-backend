@@ -2,6 +2,7 @@ package com.youngkke.careon.domain.carer;
 
 import com.youngkke.careon.domain.carer.dto.AppLoginResponse;
 import com.youngkke.careon.domain.carer.dto.AppMeResponse;
+import com.youngkke.careon.domain.carer.dto.CaredResponse;
 import com.youngkke.careon.domain.carer.dto.LoginRequest;
 import com.youngkke.careon.domain.carer.dto.RefreshTokenRequest;
 import com.youngkke.careon.domain.carer.dto.RefreshTokenResponse;
@@ -9,6 +10,7 @@ import com.youngkke.careon.domain.carer.dto.UpdateAppProfileRequest;
 import com.youngkke.careon.global.auth.CurrentCarerId;
 import com.youngkke.careon.global.dto.MessageResponse;
 import jakarta.validation.Valid;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -25,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AppCarerController {
 
     private final CarerService carerService;
+    private final CarerProfileService carerProfileService;
 
     @PostMapping("/login")
     public ResponseEntity<AppLoginResponse> login(@Valid @RequestBody LoginRequest request) {
@@ -55,5 +58,11 @@ public class AppCarerController {
     @DeleteMapping("/me")
     public ResponseEntity<MessageResponse> withdraw(@CurrentCarerId Integer userId) {
         return ResponseEntity.ok(carerService.withdraw(userId));
+    }
+
+    /** 내 돌봄 대상자 목록. 워치 페어링 코드 발급 등에 필요한 cared_id를 여기서 받는다. */
+    @GetMapping("/me/cared")
+    public ResponseEntity<List<CaredResponse>> getCaredList(@CurrentCarerId Integer userId) {
+        return ResponseEntity.ok(carerProfileService.getCaredList(userId));
     }
 }
