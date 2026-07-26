@@ -23,7 +23,6 @@ public enum ErrorCode {
 
     // Policy
     POLICY_TYPE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 제도 유형입니다."),
-    MISSING_INTEREST_TYPE_IDS(HttpStatus.BAD_REQUEST, "조회 조건 (interest_policy_type_ids) 이 필요합니다."),
     MISSING_INTEREST_TYPE_SELECTION(HttpStatus.BAD_REQUEST, "관심 제도 유형을 1개 이상 선택해주세요."),
     POLICY_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 제도입니다."),
     SAVED_POLICY_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 저장한 제도입니다."),

@@ -20,7 +20,9 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,6 +39,14 @@ public class PolicyService {
     private final InterestPolicyTypeRepository interestPolicyTypeRepository;
     private final CarerRepository carerRepository;
     private final PolicySupport policySupport;
+
+    /**
+     * 대안 복지로 내려줄 제도 ID 목록. 적어둔 순서가 화면에 보이는 순서가 된다.
+     * 기본값은 긴급복지지원(69), 지역사회 통합돌봄(70), 정신건강 심리상담 바우처사업(71), 국민기초생활보장제도(74).
+     * 목록을 바꿀 땐 재배포 없이 application.yaml의 policy.alternative-policy-ids만 고치고 재시작하면 된다.
+     */
+    @Value("${policy.alternative-policy-ids:69,70,71,74}")
+    private List<Integer> alternativePolicyIds;
 
     /** 제도 목록 조회. 모든 조건은 선택이며, 조건이 없으면 전체 제도를 반환한다. */
     public List<PolicyListItemResponse> getList(
@@ -67,17 +77,23 @@ public class PolicyService {
                 .toList();
     }
 
-    /** 대안 복지 조회. category는 항상 GENERAL로 고정하고, 관심 유형 ID로 필터링한다. */
-    public List<AlternativePolicyResponse> getAlternatives(String interestPolicyTypeIds) {
-        List<Integer> typeIds = parseIds(interestPolicyTypeIds);
-        if (typeIds.isEmpty()) {
-            throw new BusinessException(ErrorCode.MISSING_INTEREST_TYPE_IDS);
-        }
-
-        List<Policy> policies = policyRepository.search(PolicyCategory.GENERAL, null, null, true, typeIds);
+    /**
+     * 대안 복지 조회. 자가진단에서 무엇을 고르든 항상 같은 제도들을 보여준다.
+     * (기존엔 프론트가 응답 경우의 수를 따져 관심 유형을 넘겨줬지만, 고정 목록으로 정리하기로 함)
+     * 구버전 프론트가 계속 interest_policy_type_ids를 붙여 보내도 그냥 무시된다.
+     */
+    public List<AlternativePolicyResponse> getAlternatives() {
+        List<Policy> policies = policyRepository.findAllWithAgencyByIdIn(alternativePolicyIds);
         Map<Integer, List<PolicyTypeSummary>> typesByPolicy = policySupport.loadPolicyTypes(policies);
 
-        return policies.stream()
+        Map<Integer, Policy> policyById = new LinkedHashMap<>();
+        policies.forEach(policy -> policyById.put(policy.getPolicyId(), policy));
+
+        // DB 조회 결과 순서가 아니라 설정에 적어둔 순서대로 내려준다 (화면에 보이는 순서라서).
+        // 설정에 있는 ID가 DB에서 지워졌다면 그 항목만 조용히 빠진다.
+        return alternativePolicyIds.stream()
+                .map(policyById::get)
+                .filter(Objects::nonNull)
                 .map(policy -> new AlternativePolicyResponse(
                         policy.getPolicyId(),
                         policy.getPolicyName(),

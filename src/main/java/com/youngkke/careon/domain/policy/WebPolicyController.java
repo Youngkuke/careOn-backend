@@ -31,11 +31,14 @@ public class WebPolicyController {
         return ResponseEntity.ok(policyService.getList(category, policyTypeIds, agencyId, keyword));
     }
 
-    /** 대안 복지 조회. 인증 불필요. */
+    /**
+     * 대안 복지 조회. 인증 불필요.
+     * 자가진단 응답과 무관하게 고정 목록을 돌려주므로 조회 조건을 받지 않는다.
+     * 구버전 프론트가 붙여 보내던 interest_policy_type_ids는 그냥 무시된다 (모르는 쿼리 파라미터라 400이 나지 않음).
+     */
     @GetMapping("/alternatives")
-    public ResponseEntity<List<AlternativePolicyResponse>> getAlternatives(
-            @RequestParam(name = "interest_policy_type_ids", required = false) String interestPolicyTypeIds) {
-        return ResponseEntity.ok(policyService.getAlternatives(interestPolicyTypeIds));
+    public ResponseEntity<List<AlternativePolicyResponse>> getAlternatives() {
+        return ResponseEntity.ok(policyService.getAlternatives());
     }
 
     /** 맞춤 지원 제도 목록 조회 (챗봇 매칭 결과). 인증 필요. */
