@@ -9,6 +9,7 @@ import java.util.List;
 public record AppSavedPolicyResponse(
         Integer savedPolicyId,
         Integer policyId,
+        String servId,
         String policyName,
         String applicationDeadline,
         String applicationDeadlineDDay,

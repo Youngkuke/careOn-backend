@@ -42,7 +42,10 @@ public class TodoService {
         Carer carer = getCarerOrThrow(carerId);
         LocalDate today = DateTimes.today();
 
+        // cb 제도는 필요 서류 데이터가 아직 없어 준비할 서류가 하나도 없다. 빈 항목만 늘어나므로 여기서는 제외한다.
+        // (찜 목록에는 그대로 보인다)
         return savedPolicyRepository.findAllWithPolicyByCarer(carer).stream()
+                .filter(savedPolicy -> !savedPolicy.isCbInstitution())
                 .map(savedPolicy -> toTodoListResponse(savedPolicy, today))
                 .toList();
     }

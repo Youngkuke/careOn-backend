@@ -47,6 +47,11 @@ public class NotificationScheduler {
             if (!carer.isNotificationEnabled()) {
                 continue;
             }
+            // cb 제도는 마감일·발표일 데이터가 없어 알릴 시점 자체를 계산할 수 없다.
+            // 건너뛰지 않으면 policy가 비어 있어 이 배치 전체가 죽는다.
+            if (savedPolicy.isCbInstitution()) {
+                continue;
+            }
 
             Policy policy = savedPolicy.getPolicy();
             created += createIfNeeded(savedPolicy, deadlineNotificationType(policy, today));

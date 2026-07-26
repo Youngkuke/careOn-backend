@@ -22,12 +22,23 @@ import lombok.NoArgsConstructor;
 
 /**
  * ERD의 "저장한 제도(saved_policy)" 테이블.
- * (user_id, policy_id) 유니크 제약으로, 동시에 두 번 저장 요청이 와도 DB 레벨에서 중복 저장을 막는다.
+ *
+ * <p>찜 대상이 두 갈래다. 기존 policies의 제도는 policy로, AI 서버가 복지로 API로 채우는 cb 스키마의 제도는
+ * servId(문자열 식별자)로 가리킨다. 둘 중 정확히 하나만 채워진다.
+ *
+ * <p>cb 제도를 policies로 옮겨 담지 않는 이유는, 같은 제도가 두 테이블에 중복 저장되고 동기화 시점마다
+ * 어긋날 수 있기 때문이다. 원본은 cb에 두고 여기서는 식별자만 들고 있는다.
+ *
+ * <p>유니크 제약은 두 갈래 각각에 건다. 동시에 두 번 저장 요청이 와도 DB 레벨에서 중복을 막는다.
+ * (Postgres는 유니크 제약에서 NULL을 서로 다른 값으로 취급하므로, 쓰지 않는 쪽 컬럼이 NULL이어도 충돌하지 않는다)
  */
 @Entity
 @Table(
         name = "saved_policies",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"carer_id", "policy_id"}))
+        uniqueConstraints = {
+            @UniqueConstraint(columnNames = {"carer_id", "policy_id"}),
+            @UniqueConstraint(columnNames = {"carer_id", "serv_id"})
+        })
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
@@ -43,9 +54,19 @@ public class SavedPolicy {
     @JoinColumn(name = "carer_id", nullable = false)
     private Carer carer;
 
+    /** 기존 policies의 제도를 찜한 경우. cb 제도를 찜했으면 null이다. */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "policy_id", nullable = false)
+    @JoinColumn(name = "policy_id")
     private Policy policy;
+
+    /** cb 제도를 찜한 경우의 식별자(복지로 서비스ID). 기존 제도를 찜했으면 null이다. */
+    @Column(name = "serv_id", length = 100)
+    private String servId;
+
+    /** cb 제도를 찜한 항목인지. 목록을 그릴 때 어느 원본에서 정보를 읽을지 가른다. */
+    public boolean isCbInstitution() {
+        return servId != null;
+    }
 
     /**
      * 신청 상태. PREPARING(기본값): 아직 "신청했어요"로 응답하지 않은 상태(서류 준비 중).
