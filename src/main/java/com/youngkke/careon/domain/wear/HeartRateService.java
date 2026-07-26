@@ -10,7 +10,6 @@ import com.youngkke.careon.domain.wear.dto.LatestHeartRateResponse;
 import com.youngkke.careon.global.error.BusinessException;
 import com.youngkke.careon.global.error.ErrorCode;
 import com.youngkke.careon.global.util.DateTimes;
-import java.time.LocalDateTime;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -58,7 +57,7 @@ public class HeartRateService {
                     .orElseThrow(() -> e);
         }
 
-        wearDevice.touchLastSeen(LocalDateTime.now());
+        // last_seen_at은 WearLastSeenInterceptor가 워치 요청 전체에 대해 갱신한다.
         return toCreateResponse(heartRate);
     }
 

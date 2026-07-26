@@ -85,7 +85,7 @@ public class EmergencyEventService {
             isNewEvent = false;
         }
 
-        wearDevice.touchLastSeen(LocalDateTime.now());
+        // last_seen_at은 WearLastSeenInterceptor가 워치 요청 전체에 대해 갱신한다.
         if (isNewEvent) {
             careEventRecorder.record(
                     event.getCared(),

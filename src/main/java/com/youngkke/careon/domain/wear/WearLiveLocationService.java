@@ -100,7 +100,8 @@ public class WearLiveLocationService {
         wearDevice.updateLiveLocation(
                 request.latitude(), request.longitude(), request.accuracyMeters(),
                 DateTimes.parseToKst(request.capturedAt()));
-        wearDevice.touchLastSeen(LocalDateTime.now());
+        // last_seen_at은 WearLastSeenInterceptor가 워치 요청 전체에 대해 갱신한다.
+        // 여기서 하면 추적이 꺼져 위에서 일찍 반환하는 경우가 빠져, 워치가 살아 있는데도 미통신으로 잡힌다.
         return new LiveLocationUpdateResponse(true);
     }
 

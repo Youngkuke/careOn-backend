@@ -41,6 +41,9 @@ public class WearDeviceStatusService {
      */
     private static final int OFFLINE_THRESHOLD_HOURS = 6;
 
+    /** last_seen_at을 다시 쓰기까지 두는 최소 간격. 판정 기준이 6시간이라 이 정도 오차는 영향이 없다. */
+    private static final int LAST_SEEN_WRITE_INTERVAL_SECONDS = 60;
+
     private final WearDeviceRepository wearDeviceRepository;
     private final PushSender pushSender;
 
@@ -51,7 +54,7 @@ public class WearDeviceStatusService {
         LocalDateTime now = LocalDateTime.now();
 
         wearDevice.reportBattery(request.batteryPercent(), DateTimes.parseToKst(request.reportedAt()));
-        wearDevice.touchLastSeen(now);
+        // last_seen_at은 WearLastSeenInterceptor가 이 요청에도 똑같이 적용한다.
 
         boolean notified = false;
         if (request.batteryPercent() >= BATTERY_RECOVERY_THRESHOLD) {
@@ -63,6 +66,28 @@ public class WearDeviceStatusService {
         }
 
         return new WearDeviceStatusReportResponse(wearDevice.getBatteryPercent(), notified);
+    }
+
+    /**
+     * 워치에서 인증된 요청이 성공할 때마다 마지막 연락 시각을 갱신한다.
+     *
+     * <p>매 요청마다 쓰지는 않는다. 워치는 추적 중일 때 10초마다 상태를 확인하는데, 미통신 판정 기준이
+     * 시간 단위라 그 간격까지 기록할 이유가 없다. 마지막 기록이 충분히 최근이면 건너뛴다.
+     *
+     * <p>요청 처리가 끝난 뒤에 호출되므로 본래 작업과 별개 트랜잭션이다. 여기서 실패해도 원래 요청은 이미 성공한 상태다.
+     */
+    @Transactional
+    public void recordLastSeen(Integer wearDeviceId) {
+        LocalDateTime now = LocalDateTime.now();
+        wearDeviceRepository
+                .findById(wearDeviceId)
+                .filter(wearDevice -> !wearDevice.isDisconnected())
+                .filter(wearDevice -> isStale(wearDevice.getLastSeenAt(), now))
+                .ifPresent(wearDevice -> wearDevice.touchLastSeen(now));
+    }
+
+    private boolean isStale(LocalDateTime lastSeenAt, LocalDateTime now) {
+        return lastSeenAt == null || lastSeenAt.isBefore(now.minusSeconds(LAST_SEEN_WRITE_INTERVAL_SECONDS));
     }
 
     /**
