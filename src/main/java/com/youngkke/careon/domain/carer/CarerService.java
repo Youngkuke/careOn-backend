@@ -12,6 +12,7 @@ import com.youngkke.careon.domain.carer.dto.AppInstallStatusRequest;
 import com.youngkke.careon.domain.carer.dto.AppInstallStatusResponse;
 import com.youngkke.careon.domain.document.UserDocumentHistoryRepository;
 import com.youngkke.careon.domain.policy.MatchedPolicyRepository;
+import com.youngkke.careon.domain.push.PushTokenRepository;
 import com.youngkke.careon.global.util.DateTimes;
 import com.youngkke.careon.domain.carer.dto.AppLoginResponse;
 import com.youngkke.careon.domain.carer.dto.AppMeResponse;
@@ -57,6 +58,7 @@ public class CarerService {
     private final CarerIncomeSignalRepository carerIncomeSignalRepository;
     private final MatchedPolicyRepository matchedPolicyRepository;
     private final UserDocumentHistoryRepository userDocumentHistoryRepository;
+    private final PushTokenRepository pushTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
     private final MailService mailService;
@@ -225,6 +227,7 @@ public class CarerService {
         interestPolicyTypeRepository.deleteAllByCarer(carer);
 
         // 챗봇/진단 관련 데이터도 함께 정리한다 (FK 제약 위반 방지).
+        pushTokenRepository.deleteAllByCarer(carer);
         userDocumentHistoryRepository.deleteAll(userDocumentHistoryRepository.findAllWithDetailByCarer(carer));
         matchedPolicyRepository.deleteAll(matchedPolicyRepository.findAllWithPolicyByCarer(carer));
         carerIncomeSignalRepository.deleteAll(carerIncomeSignalRepository.findAllByCarerOrderBySignalIdAsc(carer));

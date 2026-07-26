@@ -48,3 +48,10 @@ wear:
 app:
   # 프론트엔드 비밀번호 재설정 페이지 주소. 실제 프론트 배포되면 이 값으로 바꿔주세요.
   password-reset-url: http://localhost:3000/reset-password
+
+expo:
+  push:
+    url: https://exp.host/--/api/v2/push/send
+    # Expo 대시보드에서 "Enhanced Security for Push Notifications"를 켠 프로젝트만 필요합니다.
+    # 안 켰으면 비워두세요. (기본값도 빈 값이라 이 블록 자체를 생략해도 동작합니다)
+    access-token: ""
