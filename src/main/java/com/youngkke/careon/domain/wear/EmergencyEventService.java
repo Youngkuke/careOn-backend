@@ -30,9 +30,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class EmergencyEventService {
 
-    /** 앱에서 긴급 알림 전용으로 만들어둔 Android 알림 채널. */
-    private static final String EMERGENCY_CHANNEL_ID = "emergency";
-
     private final CarerRepository carerRepository;
     private final CaredRepository caredRepository;
     private final WearDeviceRepository wearDeviceRepository;
@@ -93,12 +90,11 @@ public class EmergencyEventService {
         Cared cared = event.getCared();
         Integer eventId = event.getEmergencyEventId();
 
-        pushSender.sendAfterCommit(
+        pushSender.sendUrgentAfterCommit(
                 cared.getCarer(),
-                PushMessage.urgent(
+                PushMessage.emergency(
                         "도움 요청이 왔어요",
                         "연결된 워치에서 긴급 도움을 요청했어요.",
-                        EMERGENCY_CHANNEL_ID,
                         Map.of(
                                 "type", "EMERGENCY_SOS",
                                 "event_id", eventId,
@@ -122,6 +118,20 @@ public class EmergencyEventService {
                 .findFirstByCaredAndStatusOrderByRequestedAtDesc(cared, EmergencyStatus.PENDING)
                 .map(this::toActiveResponse)
                 .orElse(null);
+    }
+
+    /**
+     * 이벤트 ID로 SOS 1건 조회. 푸시를 눌러 앱이 새로 켜지는 경우처럼, "지금 활성인 SOS"가 아니라
+     * 푸시에 담겨온 특정 건을 열어야 할 때 쓴다. 이미 확인 처리된(ACKNOWLEDGED) 건도 그대로 조회된다.
+     * 남의 이벤트를 요청한 경우에도 "권한 없음"이 아니라 404로 답한다.
+     * 403을 주면 그 번호에 기록이 실제로 있다는 사실이 새어나가기 때문이다.
+     */
+    public ActiveEmergencyEventResponse getById(Integer carerId, Integer eventId) {
+        return emergencyEventRepository
+                .findById(eventId)
+                .filter(event -> event.getCared().getCarer().getCarerId().equals(carerId))
+                .map(this::toActiveResponse)
+                .orElseThrow(() -> new BusinessException(ErrorCode.EMERGENCY_EVENT_NOT_FOUND));
     }
 
     /**

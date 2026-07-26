@@ -13,13 +13,16 @@ public record PushMessage(String title, String body, String priority, String cha
 
     private static final String PRIORITY_HIGH = "high";
 
+    /** 앱에서 긴급 알림 전용으로 만들어둔 Android 알림 채널. 앱에 이 채널이 없으면 기본 채널로 조용히 간다. */
+    private static final String CHANNEL_EMERGENCY = "emergency";
+
     /** 일반 알림. 앱 기본 채널로 간다. */
     public static PushMessage normal(String title, String body, Map<String, Object> data) {
         return new PushMessage(title, body, null, null, data);
     }
 
-    /** 긴급 알림. 잠금화면에서도 즉시 뜨도록 high 우선순위와 전용 채널을 지정한다. */
-    public static PushMessage urgent(String title, String body, String channelId, Map<String, Object> data) {
-        return new PushMessage(title, body, PRIORITY_HIGH, channelId, data);
+    /** 긴급 알림(SOS·안심 구역 이탈). 잠금화면에서도 즉시 뜨도록 high 우선순위와 전용 채널을 지정한다. */
+    public static PushMessage emergency(String title, String body, Map<String, Object> data) {
+        return new PushMessage(title, body, PRIORITY_HIGH, CHANNEL_EMERGENCY, data);
     }
 }

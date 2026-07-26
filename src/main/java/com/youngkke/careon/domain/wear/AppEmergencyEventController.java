@@ -26,6 +26,16 @@ public class AppEmergencyEventController {
         return response == null ? ResponseEntity.noContent().build() : ResponseEntity.ok(response);
     }
 
+    /**
+     * 이벤트 ID로 SOS 1건 조회. 푸시 딥링크로 진입했을 때 쓴다.
+     * 확인 완료된 건도 조회되며, 남의 이벤트나 없는 이벤트는 모두 404다.
+     */
+    @GetMapping("/emergency-events/{eventId}")
+    public ResponseEntity<ActiveEmergencyEventResponse> getById(
+            @CurrentCarerId Integer carerId, @PathVariable Integer eventId) {
+        return ResponseEntity.ok(emergencyEventService.getById(carerId, eventId));
+    }
+
     /** 보호자가 "확인했어요" 처리. */
     @PatchMapping("/emergency-events/{eventId}/acknowledge")
     public ResponseEntity<EmergencyEventAcknowledgeResponse> acknowledge(
