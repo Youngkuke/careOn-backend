@@ -42,10 +42,10 @@ public class PolicyService {
 
     /**
      * 대안 복지로 내려줄 제도 ID 목록. 적어둔 순서가 화면에 보이는 순서가 된다.
-     * 기본값은 긴급복지지원(69), 지역사회 통합돌봄(70), 정신건강 심리상담 바우처사업(71), 국민기초생활보장제도(74).
-     * 목록을 바꿀 땐 재배포 없이 application.yaml의 policy.alternative-policy-ids만 고치고 재시작하면 된다.
+     * 기본값은 긴급복지지원(69), 지역사회 통합돌봄(70), 정신건강 심리상담 바우처사업(71), 재난적 의료비 지원사업(75).
+     * 목록을 바꿀 땐 코드 대신 application.yaml의 policy.alternative-policy-ids를 고치고 다시 빌드·재시작하면 된다.
      */
-    @Value("${policy.alternative-policy-ids:69,70,71,74}")
+    @Value("${policy.alternative-policy-ids:69,70,71,75}")
     private List<Integer> alternativePolicyIds;
 
     /** 제도 목록 조회. 모든 조건은 선택이며, 조건이 없으면 전체 제도를 반환한다. */
