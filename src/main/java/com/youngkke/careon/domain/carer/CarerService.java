@@ -71,7 +71,7 @@ public class CarerService {
             throw new BusinessException(ErrorCode.EMAIL_ALREADY_EXISTS);
         }
 
-        List<PolicyType> policyTypes = request.interestPolicyTypeIds().stream()
+        List<PolicyType> policyTypes = request.interestPolicyTypeIdsOrEmpty().stream()
                 .map(id -> policyTypeRepository.findById(id)
                         .orElseThrow(() -> new BusinessException(ErrorCode.POLICY_TYPE_NOT_FOUND)))
                 .toList();
