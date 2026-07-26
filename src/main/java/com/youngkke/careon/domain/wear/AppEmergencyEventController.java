@@ -3,12 +3,14 @@ package com.youngkke.careon.domain.wear;
 import com.youngkke.careon.domain.wear.dto.ActiveEmergencyEventResponse;
 import com.youngkke.careon.domain.wear.dto.EmergencyEventAcknowledgeResponse;
 import com.youngkke.careon.global.auth.CurrentCarerId;
+import com.youngkke.careon.global.dto.CursorPageResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -17,6 +19,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class AppEmergencyEventController {
 
     private final EmergencyEventService emergencyEventService;
+
+    /** SOS 이력 목록. 최신순, next_cursor가 null이면 마지막 페이지. */
+    @GetMapping("/cared/{caredId}/emergency-events")
+    public ResponseEntity<CursorPageResponse<ActiveEmergencyEventResponse>> listHistory(
+            @CurrentCarerId Integer carerId,
+            @PathVariable Integer caredId,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(required = false) Integer limit) {
+        return ResponseEntity.ok(emergencyEventService.listHistory(carerId, caredId, cursor, limit));
+    }
 
     /** 보호자 모바일에서 현재 활성 SOS 조회. 없으면 204. */
     @GetMapping("/cared/{caredId}/emergency-events/active")

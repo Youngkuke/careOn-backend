@@ -5,6 +5,7 @@ import com.youngkke.careon.domain.wear.dto.SafeZoneEventCreateResponse;
 import com.youngkke.careon.domain.wear.dto.SafeZoneEventRespondRequest;
 import com.youngkke.careon.domain.wear.dto.SafeZoneEventRespondResponse;
 import com.youngkke.careon.domain.wear.dto.SafeZoneResponse;
+import com.youngkke.careon.domain.wear.dto.WearActiveSafeZoneEventResponse;
 import com.youngkke.careon.global.auth.CurrentWearDeviceId;
 import com.youngkke.careon.global.error.BusinessException;
 import com.youngkke.careon.global.error.ErrorCode;
@@ -34,6 +35,13 @@ public class WearSafeZoneController {
     @GetMapping("/safe-zone")
     public ResponseEntity<SafeZoneResponse> get(@CurrentWearDeviceId Integer wearDeviceId) {
         SafeZoneResponse response = safeZoneService.getForWear(wearDeviceId);
+        return response == null ? ResponseEntity.noContent().build() : ResponseEntity.ok(response);
+    }
+
+    /** 워치 재시작 후 진행 중인 이탈 화면 복원. 응답할 수 있는 이벤트가 없으면 204. */
+    @GetMapping("/safe-zone-events/active")
+    public ResponseEntity<WearActiveSafeZoneEventResponse> getActiveEvent(@CurrentWearDeviceId Integer wearDeviceId) {
+        WearActiveSafeZoneEventResponse response = safeZoneService.getActiveEventForWear(wearDeviceId);
         return response == null ? ResponseEntity.noContent().build() : ResponseEntity.ok(response);
     }
 

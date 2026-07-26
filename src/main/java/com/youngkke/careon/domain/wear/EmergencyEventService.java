@@ -6,6 +6,8 @@ import com.youngkke.careon.domain.carer.Cared;
 import com.youngkke.careon.domain.carer.CaredRepository;
 import com.youngkke.careon.domain.push.PushMessage;
 import com.youngkke.careon.domain.push.PushSender;
+import com.youngkke.careon.domain.timeline.CareEventRecorder;
+import com.youngkke.careon.domain.timeline.CareEventType;
 import com.youngkke.careon.domain.wear.dto.ActiveEmergencyEventResponse;
 import com.youngkke.careon.domain.wear.dto.EmergencyEventAcknowledgeResponse;
 import com.youngkke.careon.domain.wear.dto.EmergencyEventCreateRequest;
@@ -13,15 +15,19 @@ import com.youngkke.careon.domain.wear.dto.EmergencyEventCreateResponse;
 import com.youngkke.careon.domain.wear.dto.EmergencyEventStatusResponse;
 import com.youngkke.careon.domain.wear.dto.EmergencyLocationRequest;
 import com.youngkke.careon.domain.wear.dto.LocationPointResponse;
+import com.youngkke.careon.global.dto.CursorPageResponse;
 import com.youngkke.careon.global.error.BusinessException;
 import com.youngkke.careon.global.error.ErrorCode;
+import com.youngkke.careon.global.util.Cursors;
 import com.youngkke.careon.global.util.DateTimes;
+import com.youngkke.careon.global.util.Pagination;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +41,7 @@ public class EmergencyEventService {
     private final WearDeviceRepository wearDeviceRepository;
     private final EmergencyEventRepository emergencyEventRepository;
     private final PushSender pushSender;
+    private final CareEventRecorder careEventRecorder;
 
     /** 워치가 SOS 발생 시 이벤트를 생성한다. 동일 Idempotency-Key 요청은 기존 이벤트를 그대로 반환한다. */
     @Transactional
@@ -80,6 +87,11 @@ public class EmergencyEventService {
 
         wearDevice.touchLastSeen(LocalDateTime.now());
         if (isNewEvent) {
+            careEventRecorder.record(
+                    event.getCared(),
+                    CareEventType.EMERGENCY_CREATED,
+                    event.getRequestedAt(),
+                    event.getEmergencyEventId());
             notifyCarer(event);
         }
         return toCreateResponse(event);
@@ -135,6 +147,33 @@ public class EmergencyEventService {
     }
 
     /**
+     * SOS 이력 목록. 확인 완료된 건도 포함해 최신순으로 준다.
+     * 권한 없는 cared를 요청하면 CARED_NOT_FOUND(404)라, 그 번호에 기록이 있는지 자체가 드러나지 않는다.
+     */
+    public CursorPageResponse<ActiveEmergencyEventResponse> listHistory(
+            Integer carerId, Integer caredId, String cursor, Integer limit) {
+        Cared cared = getOwnedCaredOrThrow(carerId, caredId);
+        int pageSize = Pagination.resolveLimit(limit);
+        Cursors.Position position = Cursors.decode(cursor);
+
+        // 다음 페이지가 있는지 판단하려고 한 건 더 읽는다. 별도 count 쿼리를 돌리지 않기 위해서다.
+        Pageable pageable = Pageable.ofSize(pageSize + 1);
+        List<EmergencyEvent> found = position == null
+                ? emergencyEventRepository.findAllByCaredOrderByRequestedAtDescEmergencyEventIdDesc(cared, pageable)
+                : emergencyEventRepository.findPageAfter(cared, position.timestamp(), position.id(), pageable);
+
+        boolean hasNext = found.size() > pageSize;
+        List<EmergencyEvent> page = hasNext ? found.subList(0, pageSize) : found;
+        String nextCursor = hasNext
+                ? Cursors.encode(
+                        page.get(page.size() - 1).getRequestedAt(),
+                        page.get(page.size() - 1).getEmergencyEventId())
+                : null;
+
+        return new CursorPageResponse<>(page.stream().map(this::toActiveResponse).toList(), nextCursor);
+    }
+
+    /**
      * 보호자가 "확인했어요" 처리. 같은 대상자에 대해 그 사이 쌓인 다른 미확인 건들도 하나의 SOS 상황으로 보고 함께 확인 처리한다.
      */
     @Transactional
@@ -151,6 +190,10 @@ public class EmergencyEventService {
         List<EmergencyEvent> otherPending =
                 emergencyEventRepository.findAllByCaredAndStatus(event.getCared(), EmergencyStatus.PENDING);
         otherPending.forEach(other -> other.acknowledge(carer, now));
+
+        // 함께 확인 처리된 건들까지 각각 남기면 타임라인이 같은 문장으로 도배되므로, 보호자가 실제로 누른 1건만 남긴다.
+        careEventRecorder.record(
+                event.getCared(), CareEventType.EMERGENCY_ACKNOWLEDGED, now, event.getEmergencyEventId());
 
         return new EmergencyEventAcknowledgeResponse(
                 event.getEmergencyEventId(), event.getStatus(), DateTimes.toIsoString(now), carerId);
@@ -194,9 +237,7 @@ public class EmergencyEventService {
     }
 
     private WearDevice getWearDeviceOrThrow(Integer wearDeviceId) {
-        return wearDeviceRepository
-                .findById(wearDeviceId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.WEAR_DEVICE_NOT_FOUND));
+        return wearDeviceRepository.getConnectedOrThrow(wearDeviceId);
     }
 
     private Cared getOwnedCaredOrThrow(Integer carerId, Integer caredId) {

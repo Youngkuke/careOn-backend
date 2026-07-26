@@ -37,12 +37,16 @@ public enum ErrorCode {
     // Todo
     TODO_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 투두 항목입니다."),
 
+    // Care task (워치 정기 안부·복약·할 일)
+    CARE_TASK_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 할 일입니다."),
+
     // Notification
     NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 알림입니다."),
 
     // Wear (워치 연동)
     WEAR_PAIRING_CODE_INVALID(HttpStatus.BAD_REQUEST, "유효하지 않거나 만료된 연결 코드입니다."),
     WEAR_DEVICE_NOT_FOUND(HttpStatus.UNAUTHORIZED, "워치 인증이 필요합니다."),
+    WEAR_DEVICE_DISCONNECTED(HttpStatus.UNAUTHORIZED, "보호자가 워치 연결을 해제했습니다."),
     WEAR_REFRESH_TOKEN_INVALID(HttpStatus.UNAUTHORIZED, "워치 재인증이 필요합니다."),
     IDEMPOTENCY_KEY_MISSING(HttpStatus.BAD_REQUEST, "Idempotency-Key 헤더가 필요합니다."),
     EMERGENCY_EVENT_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 긴급 이벤트입니다."),

@@ -87,4 +87,13 @@ public class SafeZoneEvent {
         this.response = response;
         this.respondedAt = now;
     }
+
+    /**
+     * 응답 마감이 지나도록 워치에서 아무 응답이 없었을 때 확정한다.
+     * 이 처리가 없으면 response가 영원히 null로 남아, 며칠 전 이탈이 계속 "활성 이벤트"로 조회된다.
+     */
+    public void markNoResponse(LocalDateTime now) {
+        this.response = SafeZoneResponseType.NO_RESPONSE;
+        this.respondedAt = now;
+    }
 }

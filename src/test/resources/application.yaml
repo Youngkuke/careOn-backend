@@ -1,0 +1,38 @@
+# 테스트 전용 설정.
+#
+# 운영 application.yaml은 Supabase 운영 DB를 가리키고 ddl-auto가 update라, 이 파일이 없으면
+# contextLoads 테스트만 돌려도 운영 스키마가 바뀐다. 테스트는 매번 새로 만들고 지우는 인메모리 DB를 쓴다.
+#
+# 엔티티 매핑과 Repository 메서드 이름은 애플리케이션이 뜰 때 검증되므로, 이 테스트가 통과하면
+# "배포했더니 앱이 안 뜬다"는 실수를 미리 잡을 수 있다.
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:careon;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    open-in-view: false
+  mail:
+    host: localhost
+    port: 2525
+    username: test
+    password: test
+
+jwt:
+  # 테스트용 더미 값 (HS256 최소 길이를 채우기 위한 값일 뿐 실제 키가 아님)
+  secret: dGVzdC1vbmx5LXNlY3JldC1rZXktZm9yLWNhcmVvbi11bml0LXRlc3RzLTEyMzQ1Njc4OTA=
+  web-access-token-validity-seconds: 21600
+  app-access-token-validity-seconds: 3600
+  refresh-token-validity-seconds: 7776000
+
+wear:
+  access-token-validity-seconds: 3600
+  refresh-token-validity-seconds: 15552000
+
+app:
+  password-reset-url: http://localhost:3000/reset-password
