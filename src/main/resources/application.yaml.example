@@ -74,6 +74,9 @@ notification:
   # 같은 마감 알림이 하루에 여러 번 울리면 사용자에겐 스팸이라, 평상시엔 반드시 false로 둡니다.
   # true로 켜도 앱 내 알림 목록은 1건만 유지되고 푸시만 다시 나갑니다. (시연용)
   repeat-push: false
+  # 마감 전이기만 하면 무엇을 찜하든 D-7 알림을 보냅니다. 기본값 false.
+  # 켜면 실제 남은 일수와 무관하게 "7일 남았어요" 문구가 나가므로, 시연이 끝나면 반드시 false로 되돌리세요.
+  notify-any-deadline: false
 
 expo:
   push:

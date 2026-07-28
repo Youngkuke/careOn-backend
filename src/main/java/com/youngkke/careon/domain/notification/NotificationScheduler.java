@@ -53,6 +53,16 @@ public class NotificationScheduler {
     private boolean repeatPush;
 
     /**
+     * 마감 전이기만 하면 무엇을 찜하든 D-7 알림을 보내는 시연용 모드. 기본값 false.
+     * 시연에서 심사위원이 어떤 제도를 고를지 미리 알 수 없어, 무엇을 찜해도 알림이 뜨게 하려는 안전망이다.
+     *
+     * <p>문구는 알림 종류로 정해지므로 실제 남은 일수가 며칠이든 "7일 남았어요"로 나간다.
+     * 사실과 다른 안내가 나가는 셈이라 평상시에는 절대 켜면 안 된다.
+     */
+    @Value("${notification.notify-any-deadline:false}")
+    private boolean notifyAnyDeadline;
+
+    /**
      * 배치가 도는 시각. 기본은 매일 오전 9시(KST)로, 마감 알림을 받기 자연스러운 시간대라 정한 값이다.
      * 시연 등으로 시각을 옮겨야 하면 코드 대신 application.yaml의 notification.deadline-cron을 고친다.
      * (예: 오후 2·3·4시 = "0 0 14,15,16 * * *")
@@ -113,12 +123,17 @@ public class NotificationScheduler {
             return null;
         }
         long daysUntil = ChronoUnit.DAYS.between(today, deadline);
-        return switch ((int) daysUntil) {
+        NotificationType exact = switch ((int) daysUntil) {
             case 7 -> NotificationType.DEADLINE_D7;
             case 3 -> NotificationType.DEADLINE_D3;
             case 1 -> NotificationType.DEADLINE_D1;
             default -> null;
         };
+        if (exact != null) {
+            return exact;
+        }
+        // 시연 모드: 아직 마감 전이기만 하면 무엇을 찜하든 D-7 알림을 내보낸다.
+        return (notifyAnyDeadline && daysUntil > 0) ? NotificationType.DEADLINE_D7 : null;
     }
 
     private LocalDate toDate(LocalDateTime dateTime) {
