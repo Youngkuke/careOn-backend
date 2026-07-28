@@ -206,7 +206,8 @@ public class SavedPolicyService {
     }
 
     /**
-     * cb 제도는 기관을 별도 테이블로 관리하지 않아 agencyId가 없고, 제도 유형·필요 서류·마감일 데이터도 아직 없다.
+     * cb 제도는 기관을 별도 테이블로 관리하지 않아 agencyId가 없고, 제도 유형·필요 서류 데이터도 아직 없다.
+     * 마감일은 cb.deadline-column 설정이 있을 때만 채워지고, 없으면 기존처럼 null이다.
      * 원본 행이 사라지는 일은 없다고 확인했지만, 만에 하나 못 찾더라도 찜 항목 자체는 목록에 남긴다.
      */
     private SavedPolicyResponse toCbWebResponse(
@@ -222,7 +223,7 @@ public class SavedPolicyService {
                 institution == null ? null : institution.agencyName(),
                 institution == null ? null : institution.summary(),
                 null,
-                null,
+                toCbDeadlineString(institution),
                 savedPolicy.isApplied(),
                 savedPolicy.getApplicationStatus().name(),
                 DateTimes.toIsoString(savedPolicy.getAppliedAt()),
@@ -233,6 +234,17 @@ public class SavedPolicyService {
                 List.of(),
                 List.of(),
                 institution == null ? null : institution.regionName());
+    }
+
+    /**
+     * cb 마감일은 날짜만 있어 시각이 없다. 기존 제도와 응답 형식이 갈리면 앱이 두 가지로 파싱해야 하므로
+     * 자정 기준 ISO 문자열로 맞춰서 내려보낸다.
+     */
+    private String toCbDeadlineString(CbInstitutionReader.CbInstitution institution) {
+        if (institution == null || institution.deadline() == null) {
+            return null;
+        }
+        return DateTimes.toIsoString(institution.deadline().atStartOfDay());
     }
 
     private Map<String, CbInstitutionReader.CbInstitution> loadCbInstitutions(List<SavedPolicy> savedPolicies) {

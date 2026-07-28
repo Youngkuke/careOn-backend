@@ -1,5 +1,7 @@
 package com.youngkke.careon.domain.notification;
 
+import com.youngkke.careon.domain.policy.CbInstitutionReader;
+import com.youngkke.careon.domain.policy.CbInstitutionReader.CbInstitution;
 import com.youngkke.careon.domain.policy.Policy;
 import com.youngkke.careon.domain.policy.SavedPolicy;
 import com.youngkke.careon.domain.policy.SavedPolicyRepository;
@@ -10,7 +12,10 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,6 +41,7 @@ public class NotificationScheduler {
     private final SavedPolicyRepository savedPolicyRepository;
     private final NotificationRepository notificationRepository;
     private final PushSender pushSender;
+    private final CbInstitutionReader cbInstitutionReader;
 
     /**
      * 이미 만들어둔 알림도 배치가 돌 때마다 푸시를 다시 보낼지 여부.
@@ -55,38 +61,68 @@ public class NotificationScheduler {
     @Transactional
     public void generateNotifications() {
         LocalDate today = LocalDate.now(KST);
+        List<SavedPolicy> savedPolicies = savedPolicyRepository.findAll();
+        Map<String, CbInstitution> cbByServId = loadCbInstitutions(savedPolicies);
         int created = 0;
 
-        for (SavedPolicy savedPolicy : savedPolicyRepository.findAll()) {
+        for (SavedPolicy savedPolicy : savedPolicies) {
             Carer carer = savedPolicy.getCarer();
             if (!carer.isNotificationEnabled()) {
                 continue;
             }
-            // cb 제도는 마감일·발표일 데이터가 없어 알릴 시점 자체를 계산할 수 없다.
-            // 건너뛰지 않으면 policy가 비어 있어 이 배치 전체가 죽는다.
+
             if (savedPolicy.isCbInstitution()) {
+                created += createForCbInstitution(savedPolicy, cbByServId.get(savedPolicy.getServId()), today);
                 continue;
             }
 
             Policy policy = savedPolicy.getPolicy();
-            created += createIfNeeded(savedPolicy, deadlineNotificationType(policy, today));
-            created += createIfNeeded(savedPolicy, resultNotificationType(policy, today));
+            String policyName = policy.getPolicyName();
+            created += createIfNeeded(savedPolicy, deadlineNotificationType(toDate(policy.getApplicationDeadline()), today), policyName);
+            created += createIfNeeded(savedPolicy, resultNotificationType(policy, today), policyName);
         }
 
         log.info("알림 자동 생성 배치 완료. {}건 생성.", created);
     }
 
-    private NotificationType deadlineNotificationType(Policy policy, LocalDate today) {
-        if (policy.getApplicationDeadline() == null) {
+    /**
+     * cb(복지로) 제도의 마감 알림.
+     * 마감일은 AI 서버가 cb 테이블에 채우고, 우리는 cb.deadline-column 설정이 있을 때만 읽는다.
+     * 그 설정이 없거나 값이 비어 있으면 알릴 시점을 계산할 수 없어 조용히 건너뛴다.
+     * 결과 발표일은 cb에 대응하는 데이터가 없어 RESULT_DDAY는 대상이 아니다.
+     */
+    private int createForCbInstitution(SavedPolicy savedPolicy, CbInstitution institution, LocalDate today) {
+        if (institution == null || institution.deadline() == null) {
+            return 0;
+        }
+        return createIfNeeded(
+                savedPolicy, deadlineNotificationType(institution.deadline(), today), institution.name());
+    }
+
+    private Map<String, CbInstitution> loadCbInstitutions(List<SavedPolicy> savedPolicies) {
+        List<String> servIds = savedPolicies.stream()
+                .map(SavedPolicy::getServId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        return servIds.isEmpty() ? Map.of() : cbInstitutionReader.findAllByServIds(servIds);
+    }
+
+    private NotificationType deadlineNotificationType(LocalDate deadline, LocalDate today) {
+        if (deadline == null) {
             return null;
         }
-        long daysUntil = ChronoUnit.DAYS.between(today, policy.getApplicationDeadline().toLocalDate());
+        long daysUntil = ChronoUnit.DAYS.between(today, deadline);
         return switch ((int) daysUntil) {
             case 7 -> NotificationType.DEADLINE_D7;
             case 3 -> NotificationType.DEADLINE_D3;
             case 1 -> NotificationType.DEADLINE_D1;
             default -> null;
         };
+    }
+
+    private LocalDate toDate(LocalDateTime dateTime) {
+        return dateTime == null ? null : dateTime.toLocalDate();
     }
 
     private NotificationType resultNotificationType(Policy policy, LocalDate today) {
@@ -97,14 +133,14 @@ public class NotificationScheduler {
         return daysUntil == 0 ? NotificationType.RESULT_DDAY : null;
     }
 
-    private int createIfNeeded(SavedPolicy savedPolicy, NotificationType type) {
+    private int createIfNeeded(SavedPolicy savedPolicy, NotificationType type, String policyName) {
         if (type == null) {
             return 0;
         }
         if (notificationRepository.existsBySavedPolicyAndNotificationType(savedPolicy, type)) {
             // 알림은 이미 있으므로 새로 만들지 않는다. 시연 모드일 때만 푸시를 한 번 더 보낸다.
             if (repeatPush) {
-                sendPush(savedPolicy, type);
+                sendPush(savedPolicy, type, policyName);
             }
             return 0;
         }
@@ -114,7 +150,7 @@ public class NotificationScheduler {
                 .sentAt(LocalDateTime.now(KST))
                 .read(false)
                 .build());
-        sendPush(savedPolicy, type);
+        sendPush(savedPolicy, type, policyName);
         return 1;
     }
 
@@ -122,18 +158,22 @@ public class NotificationScheduler {
      * 앱 내 알림을 새로 만든 그 순간에만 푸시도 함께 보낸다.
      * 위의 (저장 제도, 알림 종류) 중복 체크를 그대로 타므로, 배치가 여러 번 돌아도 같은 알림은 1회만 나간다.
      */
-    private void sendPush(SavedPolicy savedPolicy, NotificationType type) {
-        Policy policy = savedPolicy.getPolicy();
+    private void sendPush(SavedPolicy savedPolicy, NotificationType type, String policyName) {
+        // 찜과 마찬가지로 제도를 가리키는 키가 두 갈래다. 앱이 어느 쪽인지 바로 알 수 있도록
+        // 해당하는 키만 싣는다. (기존 제도면 policy_id, cb 제도면 serv_id)
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("type", "POLICY_DEADLINE");
+        data.put("notification_type", type.name());
+        data.put("saved_policy_id", savedPolicy.getSavedPolicyId());
+        if (savedPolicy.isCbInstitution()) {
+            data.put("serv_id", savedPolicy.getServId());
+        } else {
+            data.put("policy_id", savedPolicy.getPolicy().getPolicyId());
+        }
+        data.put("url", "/notifications");
+
         pushSender.sendAfterCommit(
                 savedPolicy.getCarer(),
-                PushMessage.normal(
-                        type.pushTitle(),
-                        type.pushBody(policy.getPolicyName()),
-                        Map.of(
-                                "type", "POLICY_DEADLINE",
-                                "notification_type", type.name(),
-                                "saved_policy_id", savedPolicy.getSavedPolicyId(),
-                                "policy_id", policy.getPolicyId(),
-                                "url", "/notifications")));
+                PushMessage.normal(type.pushTitle(), type.pushBody(policyName), data));
     }
 }

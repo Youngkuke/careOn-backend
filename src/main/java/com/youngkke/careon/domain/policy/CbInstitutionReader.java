@@ -1,6 +1,10 @@
 package com.youngkke.careon.domain.policy;
 
 import jakarta.persistence.EntityManager;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -8,7 +12,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,26 +29,58 @@ import org.springframework.transaction.annotation.Transactional;
  * 갑자기 조회되지 않는 일은 없고, 종료 여부만 active로 구분한다.
  */
 @Component
-@RequiredArgsConstructor
 public class CbInstitutionReader {
 
-    private static final String SELECT_BY_SERV_IDS =
-            """
-            SELECT serv_id, serv_nm, serv_dgst, jur_org_nm, detail_link, ctpv_nm, sgg_nm, is_active
-            FROM cb.cb_institutions
-            WHERE serv_id IN (:servIds)
-            """;
+    private static final Logger log = LoggerFactory.getLogger(CbInstitutionReader.class);
+
+    private static final String BASE_COLUMNS =
+            "serv_id, serv_nm, serv_dgst, jur_org_nm, detail_link, ctpv_nm, sgg_nm, is_active";
+
+    /** 마감일 칸이 어떤 형식으로 들어오든 읽히도록 흔한 표기를 순서대로 시도한다. */
+    private static final List<DateTimeFormatter> DATE_PATTERNS = List.of(
+            DateTimeFormatter.ISO_LOCAL_DATE,
+            DateTimeFormatter.ofPattern("yyyyMMdd"),
+            DateTimeFormatter.ofPattern("yyyy.M.d"),
+            DateTimeFormatter.ofPattern("yyyy/M/d"));
 
     private final EntityManager entityManager;
+
+    /**
+     * cb 테이블의 신청 마감일 컬럼명. cb 스키마는 AI 서버 소유라 우리가 만들 수 없다.
+     *
+     * <p>비워두면(기본값) 마감일을 아예 조회하지 않고 deadline이 항상 null이 된다. 컬럼이 아직 없는데
+     * SELECT에 넣으면 찜 목록 조회까지 통째로 실패하므로, 상대 팀이 컬럼을 만든 뒤에 켜는 구조로 뒀다.
+     * (application.yaml의 cb.deadline-column에 실제 컬럼명을 적으면 켜진다)
+     */
+    private final String deadlineColumn;
+
+    private final String selectByServIds;
+
+    public CbInstitutionReader(
+            EntityManager entityManager, @Value("${cb.deadline-column:}") String deadlineColumn) {
+        this.entityManager = entityManager;
+        this.deadlineColumn = (deadlineColumn == null || deadlineColumn.isBlank()) ? null : deadlineColumn.trim();
+        this.selectByServIds = """
+                SELECT %s
+                FROM cb.cb_institutions
+                WHERE serv_id IN (:servIds)
+                """
+                .formatted(this.deadlineColumn == null ? BASE_COLUMNS : BASE_COLUMNS + ", " + this.deadlineColumn);
+
+        if (this.deadlineColumn == null) {
+            log.info("cb 마감일 컬럼이 설정되지 않아 cb 제도의 마감 알림은 나가지 않습니다.");
+        }
+    }
 
     /**
      * 제도 요약 1건.
      *
      * @param regionName 시도 + 시군구를 합친 표시용 지역명. 서울시 전체 사업이면 자치구가 비어 있다.
+     * @param deadline 신청 마감일. cb.deadline-column을 설정하지 않았거나 값이 비었으면 null.
      */
     public record CbInstitution(
             String servId, String name, String summary, String agencyName, String link, String regionName,
-            boolean active) {}
+            boolean active, LocalDate deadline) {}
 
     public Optional<CbInstitution> findByServId(String servId) {
         return Optional.ofNullable(findAllByServIds(List.of(servId)).get(servId));
@@ -57,7 +95,7 @@ public class CbInstitutionReader {
 
         @SuppressWarnings("unchecked")
         List<Object[]> rows = entityManager
-                .createNativeQuery(SELECT_BY_SERV_IDS)
+                .createNativeQuery(selectByServIds)
                 .setParameter("servIds", servIds)
                 .getResultList();
 
@@ -75,7 +113,8 @@ public class CbInstitutionReader {
                 asString(row[3]),
                 asString(row[4]),
                 toRegionName(asString(row[5]), asString(row[6])),
-                row[7] == null || (Boolean) row[7]);
+                row[7] == null || (Boolean) row[7],
+                deadlineColumn == null ? null : toLocalDate(row[8]));
     }
 
     /** 예: "서울특별시 강남구", 자치구가 없으면 "서울특별시". */
@@ -84,6 +123,46 @@ public class CbInstitutionReader {
             return sggNm;
         }
         return (sggNm == null || sggNm.isBlank()) ? ctpvNm : ctpvNm + " " + sggNm;
+    }
+
+    /**
+     * 마감일 칸을 날짜로 바꾼다.
+     *
+     * <p>이 칸은 AI 서버가 채우는 것이라 date로 올지 '2026.8.14.' 같은 문자열로 올지 우리가 정할 수 없다.
+     * 어느 쪽이 와도 읽히게 해두고, 형식을 못 알아보면 그 한 건만 null로 두고 넘어간다.
+     * 알림 한 건이 안 나가는 것보다 배치 전체가 죽는 쪽이 훨씬 나쁘기 때문이다.
+     */
+    private LocalDate toLocalDate(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof java.sql.Date sqlDate) {
+            return sqlDate.toLocalDate();
+        }
+        if (value instanceof java.sql.Timestamp timestamp) {
+            return timestamp.toLocalDateTime().toLocalDate();
+        }
+        if (value instanceof LocalDate localDate) {
+            return localDate;
+        }
+        if (value instanceof LocalDateTime localDateTime) {
+            return localDateTime.toLocalDate();
+        }
+
+        // 끝에 붙은 마침표("2026.8.14.")와 공백을 떼고 흔한 표기들을 차례로 시도한다.
+        String text = value.toString().trim().replaceAll("[.\\s]+$", "");
+        if (text.isEmpty()) {
+            return null;
+        }
+        for (DateTimeFormatter formatter : DATE_PATTERNS) {
+            try {
+                return LocalDate.parse(text, formatter);
+            } catch (DateTimeParseException ignored) {
+                // 다음 형식으로 계속 시도
+            }
+        }
+        log.warn("cb 마감일 형식을 알아볼 수 없어 건너뜁니다. value={}", text);
+        return null;
     }
 
     private String asString(Object value) {
