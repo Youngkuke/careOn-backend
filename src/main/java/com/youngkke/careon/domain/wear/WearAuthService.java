@@ -7,6 +7,7 @@ import com.youngkke.careon.domain.carer.CaredRepository;
 import com.youngkke.careon.domain.carer.dto.CaredResponse;
 import com.youngkke.careon.domain.timeline.CareEventRecorder;
 import com.youngkke.careon.domain.timeline.CareEventType;
+import com.youngkke.careon.domain.wear.dto.WearConnectionResponse;
 import com.youngkke.careon.domain.wear.dto.WearPairRequest;
 import com.youngkke.careon.domain.wear.dto.WearPairResponse;
 import com.youngkke.careon.domain.wear.dto.WearPairingCodeResponse;
@@ -178,6 +179,37 @@ public class WearAuthService {
                     wearDevice.disconnect(now);
                     careEventRecorder.record(wearDevice.getCared(), CareEventType.WEAR_UNPAIRED, now);
                 });
+    }
+
+    /**
+     * 워치에서 현재 연결 정보를 조회한다. 토큰이 가리키는 연결 1건만 본다.
+     * 기기가 없거나 이미 해제됐으면 401 (getConnectedOrThrow의 기존 정책 그대로).
+     */
+    public WearConnectionResponse getConnection(Integer wearDeviceId) {
+        WearDevice wearDevice = wearDeviceRepository.getConnectedOrThrow(wearDeviceId);
+        Carer carer = wearDevice.getCared().getCarer();
+
+        return new WearConnectionResponse(
+                wearDevice.getWearDeviceId(),
+                wearDevice.getDeviceName(),
+                DateTimes.toIsoString(wearDevice.getConnectedAt()),
+                new WearConnectionResponse.CarerSummary(carer.getCarerId(), carer.getName(), carer.getEmail()));
+    }
+
+    /**
+     * 워치 스스로 연결을 해제한다. 보호자가 해제하는 {@link #disconnect(Integer)}와 같은 상태 변경을 하되,
+     * 대상을 carer가 아니라 토큰이 가리키는 기기로 잡는다.
+     *
+     * <p>보호자 쪽과 달리 이미 해제된 상태에서 다시 부르면 401이다. 워치는 자기 토큰으로 요청하는데 그 토큰이
+     * 바로 이 호출로 무효화되기 때문이다. 해제 후의 모든 워치 요청이 401이라는 규칙과 같은 결과다.
+     */
+    @Transactional
+    public void disconnectFromWear(Integer wearDeviceId) {
+        WearDevice wearDevice = wearDeviceRepository.getConnectedOrThrow(wearDeviceId);
+        LocalDateTime now = LocalDateTime.now();
+
+        wearDevice.disconnect(now);
+        careEventRecorder.record(wearDevice.getCared(), CareEventType.WEAR_UNPAIRED, now);
     }
 
     /** 워치가 표시명을 안 보내주는 동안 쓸 기본값. 보호자 화면에 기기 ID가 그대로 노출되는 걸 막는 게 목적이다. */
