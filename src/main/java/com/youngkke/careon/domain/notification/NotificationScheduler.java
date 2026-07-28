@@ -79,24 +79,24 @@ public class NotificationScheduler {
             Policy policy = savedPolicy.getPolicy();
             String policyName = policy.getPolicyName();
             created += createIfNeeded(savedPolicy, deadlineNotificationType(toDate(policy.getApplicationDeadline()), today), policyName);
-            created += createIfNeeded(savedPolicy, resultNotificationType(policy, today), policyName);
+            created += createIfNeeded(savedPolicy, resultNotificationType(toDate(policy.getResultDate()), today), policyName);
         }
 
         log.info("알림 자동 생성 배치 완료. {}건 생성.", created);
     }
 
     /**
-     * cb(복지로) 제도의 마감 알림.
-     * 마감일은 AI 서버가 cb 테이블에 채우고, 우리는 cb.deadline-column 설정이 있을 때만 읽는다.
-     * 그 설정이 없거나 값이 비어 있으면 알릴 시점을 계산할 수 없어 조용히 건너뛴다.
-     * 결과 발표일은 cb에 대응하는 데이터가 없어 RESULT_DDAY는 대상이 아니다.
+     * cb(복지로) 제도의 마감일·발표일 알림.
+     * 두 날짜 모두 AI 서버가 cb 테이블에 채우고, 우리는 해당 컬럼명이 설정돼 있을 때만 읽는다.
+     * 설정이 없거나 값이 비어 있으면 알릴 시점을 계산할 수 없어 그 종류만 조용히 건너뛴다.
      */
     private int createForCbInstitution(SavedPolicy savedPolicy, CbInstitution institution, LocalDate today) {
-        if (institution == null || institution.deadline() == null) {
+        if (institution == null) {
             return 0;
         }
-        return createIfNeeded(
-                savedPolicy, deadlineNotificationType(institution.deadline(), today), institution.name());
+        String name = institution.name();
+        return createIfNeeded(savedPolicy, deadlineNotificationType(institution.deadline(), today), name)
+                + createIfNeeded(savedPolicy, resultNotificationType(institution.resultDate(), today), name);
     }
 
     private Map<String, CbInstitution> loadCbInstitutions(List<SavedPolicy> savedPolicies) {
@@ -125,12 +125,11 @@ public class NotificationScheduler {
         return dateTime == null ? null : dateTime.toLocalDate();
     }
 
-    private NotificationType resultNotificationType(Policy policy, LocalDate today) {
-        if (policy.getResultDate() == null) {
+    private NotificationType resultNotificationType(LocalDate resultDate, LocalDate today) {
+        if (resultDate == null) {
             return null;
         }
-        long daysUntil = ChronoUnit.DAYS.between(today, policy.getResultDate().toLocalDate());
-        return daysUntil == 0 ? NotificationType.RESULT_DDAY : null;
+        return ChronoUnit.DAYS.between(today, resultDate) == 0 ? NotificationType.RESULT_DDAY : null;
     }
 
     private int createIfNeeded(SavedPolicy savedPolicy, NotificationType type, String policyName) {

@@ -36,6 +36,9 @@ public class CbInstitutionReader {
     private static final String BASE_COLUMNS =
             "serv_id, serv_nm, serv_dgst, jur_org_nm, detail_link, ctpv_nm, sgg_nm, is_active";
 
+    /** BASE_COLUMNS의 개수. 선택 컬럼이 이 다음 자리부터 붙는다. */
+    private static final int BASE_COLUMN_COUNT = 8;
+
     /** 마감일 칸이 어떤 형식으로 들어오든 읽히도록 흔한 표기를 순서대로 시도한다. */
     private static final List<DateTimeFormatter> DATE_PATTERNS = List.of(
             DateTimeFormatter.ISO_LOCAL_DATE,
@@ -46,30 +49,50 @@ public class CbInstitutionReader {
     private final EntityManager entityManager;
 
     /**
-     * cb 테이블의 신청 마감일 컬럼명. cb 스키마는 AI 서버 소유라 우리가 만들 수 없다.
+     * cb 테이블의 신청 마감일 / 결과 발표일 컬럼명. cb 스키마는 AI 서버 소유라 우리가 만들 수 없다.
      *
-     * <p>비워두면(기본값) 마감일을 아예 조회하지 않고 deadline이 항상 null이 된다. 컬럼이 아직 없는데
-     * SELECT에 넣으면 찜 목록 조회까지 통째로 실패하므로, 상대 팀이 컬럼을 만든 뒤에 켜는 구조로 뒀다.
-     * (application.yaml의 cb.deadline-column에 실제 컬럼명을 적으면 켜진다)
+     * <p>비워두면(기본값) 그 칸을 아예 조회하지 않고 항상 null이 된다. 컬럼이 아직 없는데 SELECT에 넣으면
+     * 찜 목록 조회까지 통째로 실패하므로, 상대 팀이 컬럼을 만든 뒤에 켜는 구조로 뒀다.
+     * (application.yaml의 cb.deadline-column / cb.result-date-column에 실제 컬럼명을 적으면 켜진다)
      */
     private final String deadlineColumn;
+
+    private final String resultDateColumn;
 
     private final String selectByServIds;
 
     public CbInstitutionReader(
-            EntityManager entityManager, @Value("${cb.deadline-column:}") String deadlineColumn) {
+            EntityManager entityManager,
+            @Value("${cb.deadline-column:}") String deadlineColumn,
+            @Value("${cb.result-date-column:}") String resultDateColumn) {
         this.entityManager = entityManager;
-        this.deadlineColumn = (deadlineColumn == null || deadlineColumn.isBlank()) ? null : deadlineColumn.trim();
+        this.deadlineColumn = normalize(deadlineColumn);
+        this.resultDateColumn = normalize(resultDateColumn);
+
+        StringBuilder columns = new StringBuilder(BASE_COLUMNS);
+        if (this.deadlineColumn != null) {
+            columns.append(", ").append(this.deadlineColumn);
+        }
+        if (this.resultDateColumn != null) {
+            columns.append(", ").append(this.resultDateColumn);
+        }
         this.selectByServIds = """
                 SELECT %s
                 FROM cb.cb_institutions
                 WHERE serv_id IN (:servIds)
                 """
-                .formatted(this.deadlineColumn == null ? BASE_COLUMNS : BASE_COLUMNS + ", " + this.deadlineColumn);
+                .formatted(columns);
 
         if (this.deadlineColumn == null) {
             log.info("cb 마감일 컬럼이 설정되지 않아 cb 제도의 마감 알림은 나가지 않습니다.");
         }
+        if (this.resultDateColumn == null) {
+            log.info("cb 결과 발표일 컬럼이 설정되지 않아 cb 제도의 발표일 알림은 나가지 않습니다.");
+        }
+    }
+
+    private String normalize(String column) {
+        return (column == null || column.isBlank()) ? null : column.trim();
     }
 
     /**
@@ -77,10 +100,11 @@ public class CbInstitutionReader {
      *
      * @param regionName 시도 + 시군구를 합친 표시용 지역명. 서울시 전체 사업이면 자치구가 비어 있다.
      * @param deadline 신청 마감일. cb.deadline-column을 설정하지 않았거나 값이 비었으면 null.
+     * @param resultDate 결과 발표일. cb.result-date-column을 설정하지 않았거나 값이 비었으면 null.
      */
     public record CbInstitution(
             String servId, String name, String summary, String agencyName, String link, String regionName,
-            boolean active, LocalDate deadline) {}
+            boolean active, LocalDate deadline, LocalDate resultDate) {}
 
     public Optional<CbInstitution> findByServId(String servId) {
         return Optional.ofNullable(findAllByServIds(List.of(servId)).get(servId));
@@ -105,7 +129,15 @@ public class CbInstitutionReader {
                         CbInstitution::servId, Function.identity(), (first, second) -> first, LinkedHashMap::new));
     }
 
+    /**
+     * 선택 컬럼(마감일·발표일)은 설정된 것만 SELECT에 붙기 때문에, 붙은 순서대로 자리를 세어 읽는다.
+     * 하나만 켜져 있으면 그게 8번 자리에 온다.
+     */
     private CbInstitution toInstitution(Object[] row) {
+        int next = BASE_COLUMN_COUNT;
+        LocalDate deadline = deadlineColumn == null ? null : toLocalDate(row[next++]);
+        LocalDate resultDate = resultDateColumn == null ? null : toLocalDate(row[next]);
+
         return new CbInstitution(
                 asString(row[0]),
                 asString(row[1]),
@@ -114,7 +146,8 @@ public class CbInstitutionReader {
                 asString(row[4]),
                 toRegionName(asString(row[5]), asString(row[6])),
                 row[7] == null || (Boolean) row[7],
-                deadlineColumn == null ? null : toLocalDate(row[8]));
+                deadline,
+                resultDate);
     }
 
     /** 예: "서울특별시 강남구", 자치구가 없으면 "서울특별시". */

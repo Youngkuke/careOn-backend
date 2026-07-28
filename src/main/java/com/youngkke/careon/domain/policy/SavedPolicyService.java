@@ -227,7 +227,7 @@ public class SavedPolicyService {
                 savedPolicy.isApplied(),
                 savedPolicy.getApplicationStatus().name(),
                 DateTimes.toIsoString(savedPolicy.getAppliedAt()),
-                null,
+                toIsoDate(institution == null ? null : institution.resultDate()),
                 savedPolicy.getBenefitStatus().name(),
                 DateTimes.toIsoString(savedPolicy.getBenefitCheckedAt()),
                 institution == null ? null : institution.link(),
@@ -236,15 +236,16 @@ public class SavedPolicyService {
                 institution == null ? null : institution.regionName());
     }
 
-    /**
-     * cb 마감일은 날짜만 있어 시각이 없다. 기존 제도와 응답 형식이 갈리면 앱이 두 가지로 파싱해야 하므로
-     * 자정 기준 ISO 문자열로 맞춰서 내려보낸다.
-     */
     private String toCbDeadlineString(CbInstitutionReader.CbInstitution institution) {
-        if (institution == null || institution.deadline() == null) {
-            return null;
-        }
-        return DateTimes.toIsoString(institution.deadline().atStartOfDay());
+        return toIsoDate(institution == null ? null : institution.deadline());
+    }
+
+    /**
+     * cb의 마감일·발표일은 날짜만 있어 시각이 없다. 기존 제도와 응답 형식이 갈리면 앱이 두 가지로 파싱해야
+     * 하므로 자정 기준 ISO 문자열로 맞춰서 내려보낸다.
+     */
+    private String toIsoDate(java.time.LocalDate date) {
+        return date == null ? null : DateTimes.toIsoString(date.atStartOfDay());
     }
 
     private Map<String, CbInstitutionReader.CbInstitution> loadCbInstitutions(List<SavedPolicy> savedPolicies) {

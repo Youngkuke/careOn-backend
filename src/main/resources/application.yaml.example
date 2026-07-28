@@ -56,11 +56,12 @@ policy:
   alternative-policy-ids: 69,70,71,75
 
 cb:
-  # cb.cb_institutions(AI 서버 소유)의 신청 마감일 컬럼명.
-  # 비워두면(기본값) 마감일을 조회하지 않고, cb 제도는 마감 알림 대상에서 빠집니다.
+  # cb.cb_institutions(AI 서버 소유)의 신청 마감일 / 결과 발표일 컬럼명.
+  # 비워두면(기본값) 그 칸을 조회하지 않고, 해당 종류의 알림이 cb 제도에는 나가지 않습니다.
   # 컬럼이 아직 없는데 이름을 적으면 찜 목록 조회까지 실패하므로, 상대 팀이 컬럼을 만든 뒤에 채우세요.
   # 값 형식은 date / timestamp / "2026-08-14" / "20260814" / "2026.8.14." 모두 읽습니다.
-  deadline-column: ""
+  deadline-column: "apply_deadline"
+  result-date-column: "result_announcement_date"
 
 notification:
   # 마감 알림 배치가 도는 시각. 아래 두 항목은 코드에 같은 기본값이 있어서 생략해도 동작합니다.
