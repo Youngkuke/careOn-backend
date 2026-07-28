@@ -14,6 +14,7 @@ import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,7 +37,21 @@ public class NotificationScheduler {
     private final NotificationRepository notificationRepository;
     private final PushSender pushSender;
 
-    @Scheduled(cron = "0 0 9 * * *", zone = "Asia/Seoul")
+    /**
+     * 이미 만들어둔 알림도 배치가 돌 때마다 푸시를 다시 보낼지 여부.
+     * 기본값 false. 같은 마감 알림이 하루에 여러 번 울리면 사용자에겐 그냥 스팸이기 때문이다.
+     * 시연처럼 "정해진 시각에 알림이 뜨는 장면"을 여러 번 보여줘야 할 때만 켠다.
+     * 켜도 앱 내 알림 목록은 그대로 1건만 유지된다 (푸시만 다시 나간다).
+     */
+    @Value("${notification.repeat-push:false}")
+    private boolean repeatPush;
+
+    /**
+     * 배치가 도는 시각. 기본은 매일 오전 9시(KST)로, 마감 알림을 받기 자연스러운 시간대라 정한 값이다.
+     * 시연 등으로 시각을 옮겨야 하면 코드 대신 application.yaml의 notification.deadline-cron을 고친다.
+     * (예: 오후 2·3·4시 = "0 0 14,15,16 * * *")
+     */
+    @Scheduled(cron = "${notification.deadline-cron:0 0 9 * * *}", zone = "Asia/Seoul")
     @Transactional
     public void generateNotifications() {
         LocalDate today = LocalDate.now(KST);
@@ -87,6 +102,10 @@ public class NotificationScheduler {
             return 0;
         }
         if (notificationRepository.existsBySavedPolicyAndNotificationType(savedPolicy, type)) {
+            // 알림은 이미 있으므로 새로 만들지 않는다. 시연 모드일 때만 푸시를 한 번 더 보낸다.
+            if (repeatPush) {
+                sendPush(savedPolicy, type);
+            }
             return 0;
         }
         notificationRepository.save(Notification.builder()
