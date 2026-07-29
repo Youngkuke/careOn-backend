@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,6 +39,34 @@ public class CbInstitutionReader {
 
     /** BASE_COLUMNS의 개수. 선택 컬럼이 이 다음 자리부터 붙는다. */
     private static final int BASE_COLUMN_COUNT = 8;
+
+    /**
+     * 필요 서류(required_documents_ai, jsonb)를 제도별로 읽는다.
+     *
+     * <p>JSON을 통째로 받아 자바에서 파싱하지 않고 Postgres가 풀어서 평평한 행으로 주도록 한 이유는,
+     * 그게 파싱 코드도 라이브러리 의존성도 없이 끝나기 때문이다. jsonb는 이미 파싱된 상태로 저장돼 있어
+     * DB 입장에서도 추가 비용이 아니다.
+     *
+     * <p>이름이 비어 있는 항목은 화면에 뭘 준비하라는 건지 표시할 수 없으므로 걸러낸다.
+     *
+     * <p>배열이 아닌 값이 들어오면 jsonb_array_elements가 에러를 낸다. 이 함수는 WHERE보다 먼저
+     * 평가되므로 조건절로는 막을 수 없어, 행마다 CASE로 먼저 걸러 빈 배열로 바꾼다. AI 서버가 채우는
+     * 칸이라 형식이 바뀔 수 있는데, 그때 투두 조회 전체가 실패하는 일은 없어야 한다.
+     */
+    private static final String SELECT_DOCUMENTS =
+            """
+            SELECT i.serv_id,
+                   doc ->> 'name'     AS name,
+                   doc ->> 'url'      AS url,
+                   doc ->> 'url_type' AS url_type
+            FROM cb.cb_institutions i
+                     CROSS JOIN LATERAL jsonb_array_elements(
+                         CASE WHEN jsonb_typeof(i.required_documents_ai) = 'array'
+                              THEN i.required_documents_ai
+                              ELSE '[]'::jsonb END) AS doc
+            WHERE i.serv_id IN (:servIds)
+              AND nullif(btrim(coalesce(doc ->> 'name', '')), '') IS NOT NULL
+            """;
 
     /** 마감일 칸이 어떤 형식으로 들어오든 읽히도록 흔한 표기를 순서대로 시도한다. */
     private static final List<DateTimeFormatter> DATE_PATTERNS = List.of(
@@ -101,10 +130,22 @@ public class CbInstitutionReader {
      * @param regionName 시도 + 시군구를 합친 표시용 지역명. 서울시 전체 사업이면 자치구가 비어 있다.
      * @param deadline 신청 마감일. cb.deadline-column을 설정하지 않았거나 값이 비었으면 null.
      * @param resultDate 결과 발표일. cb.result-date-column을 설정하지 않았거나 값이 비었으면 null.
+     * @param documents 필요 서류. AI 서버가 제도별로 생성해 둔 값이라 우리 documents 테이블과는 연결되지 않는다.
      */
     public record CbInstitution(
             String servId, String name, String summary, String agencyName, String link, String regionName,
-            boolean active, LocalDate deadline, LocalDate resultDate) {}
+            boolean active, LocalDate deadline, LocalDate resultDate, List<CbDocument> documents) {}
+
+    /**
+     * cb 제도의 필요 서류 1건.
+     *
+     * <p>기존 제도의 서류는 documents 테이블의 행을 가리키지만, cb 서류는 AI가 제도마다 생성한 문자열이라
+     * 이름 자체가 식별자다. url은 있을 때만 채워진다.
+     *
+     * @param urlType url의 성격. certificate_issuance(발급처) 또는 form_download(서식 내려받기).
+     *     url이 없으면 null이다.
+     */
+    public record CbDocument(String name, String url, String urlType) {}
 
     public Optional<CbInstitution> findByServId(String servId) {
         return Optional.ofNullable(findAllByServIds(List.of(servId)).get(servId));
@@ -123,23 +164,42 @@ public class CbInstitutionReader {
                 .setParameter("servIds", servIds)
                 .getResultList();
 
+        Map<String, List<CbDocument>> documents = findDocumentsByServIds(servIds);
+
         return rows.stream()
-                .map(this::toInstitution)
+                .map(row -> toInstitution(row, documents))
                 .collect(Collectors.toMap(
                         CbInstitution::servId, Function.identity(), (first, second) -> first, LinkedHashMap::new));
+    }
+
+    /** 제도별 필요 서류를 한 번에 읽는다. (servId -> 서류 목록) 서류가 없는 제도는 키 자체가 없다. */
+    private Map<String, List<CbDocument>> findDocumentsByServIds(Collection<String> servIds) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = entityManager
+                .createNativeQuery(SELECT_DOCUMENTS)
+                .setParameter("servIds", servIds)
+                .getResultList();
+
+        Map<String, List<CbDocument>> result = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            result.computeIfAbsent(asString(row[0]), key -> new ArrayList<>())
+                    .add(new CbDocument(asString(row[1]).trim(), asString(row[2]), asString(row[3])));
+        }
+        return result;
     }
 
     /**
      * 선택 컬럼(마감일·발표일)은 설정된 것만 SELECT에 붙기 때문에, 붙은 순서대로 자리를 세어 읽는다.
      * 하나만 켜져 있으면 그게 8번 자리에 온다.
      */
-    private CbInstitution toInstitution(Object[] row) {
+    private CbInstitution toInstitution(Object[] row, Map<String, List<CbDocument>> documentsByServId) {
         int next = BASE_COLUMN_COUNT;
         LocalDate deadline = deadlineColumn == null ? null : toLocalDate(row[next++]);
         LocalDate resultDate = resultDateColumn == null ? null : toLocalDate(row[next]);
 
+        String servId = asString(row[0]);
         return new CbInstitution(
-                asString(row[0]),
+                servId,
                 asString(row[1]),
                 asString(row[2]),
                 asString(row[3]),
@@ -147,7 +207,8 @@ public class CbInstitutionReader {
                 toRegionName(asString(row[5]), asString(row[6])),
                 row[7] == null || (Boolean) row[7],
                 deadline,
-                resultDate);
+                resultDate,
+                documentsByServId.getOrDefault(servId, List.of()));
     }
 
     /** 예: "서울특별시 강남구", 자치구가 없으면 "서울특별시". */

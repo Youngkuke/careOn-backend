@@ -4,6 +4,7 @@ import com.youngkke.careon.domain.carer.Carer;
 import com.youngkke.careon.domain.carer.CarerRepository;
 import com.youngkke.careon.domain.document.ConnectPolicyDocument;
 import com.youngkke.careon.domain.document.ConnectPolicyDocumentRepository;
+import com.youngkke.careon.domain.document.dto.DocumentSummary;
 import com.youngkke.careon.domain.notification.NotificationRepository;
 import com.youngkke.careon.domain.policy.dto.AppSavedPolicyResponse;
 import com.youngkke.careon.domain.policy.dto.BenefitStatusRequest;
@@ -90,12 +91,13 @@ public class SavedPolicyService {
     }
 
     /**
-     * cb(복지로) 제도 저장. 필요 서류 데이터가 아직 없어 투두는 만들지 않는다.
+     * cb(복지로) 제도 저장. cb_institutions.required_documents_ai 기준으로 필요 서류 투두를 자동 생성한다.
      * 존재하지 않는 servId면 POLICY_NOT_FOUND로 답한다. 운영이 끝난(is_active=false) 제도는 저장을 막지 않는다.
      * 이미 찜해둔 제도가 나중에 종료될 수도 있어, 저장 시점에만 막으면 기준이 들쭉날쭉해지기 때문이다.
      */
     private SavePolicyResponse saveCbInstitution(Carer carer, String servId) {
-        cbInstitutionReader.findByServId(servId)
+        CbInstitutionReader.CbInstitution institution = cbInstitutionReader
+                .findByServId(servId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.POLICY_NOT_FOUND));
 
         if (savedPolicyRepository.existsByCarerAndServId(carer, servId)) {
@@ -110,8 +112,29 @@ public class SavedPolicyService {
             throw new BusinessException(ErrorCode.SAVED_POLICY_ALREADY_EXISTS);
         }
 
+        createCbTodos(savedPolicy, institution);
+
         return new SavePolicyResponse(
                 savedPolicy.getSavedPolicyId(), null, servId, false, "제도가 저장되었습니다.");
+    }
+
+    /**
+     * cb 제도의 필요 서류로 투두를 만든다.
+     *
+     * <p>서류 이름을 그대로 저장해 두는 이유는, 사용자가 체크한 상태가 특정 서류에 붙어 있어야 하기 때문이다.
+     * 조회할 때마다 cb에서 다시 읽어 목록을 만들면, AI 서버가 서류 목록을 갱신하는 순간 체크 상태가
+     * 어디에 붙어 있던 것인지 알 수 없게 된다.
+     */
+    private void createCbTodos(SavedPolicy savedPolicy, CbInstitutionReader.CbInstitution institution) {
+        for (CbInstitutionReader.CbDocument document : institution.documents()) {
+            todoRepository.save(Todo.builder()
+                    .savedPolicy(savedPolicy)
+                    .documentName(document.name())
+                    .documentUrl(document.url())
+                    .documentUrlType(document.urlType())
+                    .checked(false)
+                    .build());
+        }
     }
 
     /** 제도 저장 취소. 본인 소유가 아니면 존재하지 않는 것으로 취급하고, 연관된 투두/알림도 함께 삭제한다. */
@@ -206,7 +229,8 @@ public class SavedPolicyService {
     }
 
     /**
-     * cb 제도는 기관을 별도 테이블로 관리하지 않아 agencyId가 없고, 제도 유형·필요 서류 데이터도 아직 없다.
+     * cb 제도는 기관을 별도 테이블로 관리하지 않아 agencyId가 없고, 제도 유형 데이터도 아직 없다.
+     * 필요 서류는 cb가 들고 있지만 우리 documents 테이블의 행이 아니라 documentId와 발급처가 비어 있다.
      * 마감일은 cb.deadline-column 설정이 있을 때만 채워지고, 없으면 기존처럼 null이다.
      * 원본 행이 사라지는 일은 없다고 확인했지만, 만에 하나 못 찾더라도 찜 항목 자체는 목록에 남긴다.
      */
@@ -232,8 +256,17 @@ public class SavedPolicyService {
                 DateTimes.toIsoString(savedPolicy.getBenefitCheckedAt()),
                 institution == null ? null : institution.link(),
                 List.of(),
-                List.of(),
+                toCbDocumentSummaries(institution),
                 institution == null ? null : institution.regionName());
+    }
+
+    private List<DocumentSummary> toCbDocumentSummaries(CbInstitutionReader.CbInstitution institution) {
+        if (institution == null) {
+            return List.of();
+        }
+        return institution.documents().stream()
+                .map(document -> new DocumentSummary(null, document.name(), List.of()))
+                .toList();
     }
 
     private String toCbDeadlineString(CbInstitutionReader.CbInstitution institution) {
@@ -293,40 +326,43 @@ public class SavedPolicyService {
         Map<String, CbInstitutionReader.CbInstitution> cbInstitutions = loadCbInstitutions(savedPolicies);
 
         for (SavedPolicy savedPolicy : savedPolicies) {
+            Integer policyId;
+            String policyName;
+            LocalDate deadline;
+            LocalDate resultDate;
+            List<String> allDocumentNames;
+
             if (savedPolicy.isCbInstitution()) {
-                // cb 제도는 마감일·발표일 데이터가 없어 D-day를 계산할 수 없다. 캘린더에서는 날짜 없는 항목으로 뒤에 놓인다.
+                // 원본 행이 사라지는 일은 없다고 확인했지만, 만에 하나 못 찾더라도 찜 항목 자체는 목록에 남긴다.
                 CbInstitutionReader.CbInstitution institution = cbInstitutions.get(savedPolicy.getServId());
-                entries.add(new Entry(
-                        new AppSavedPolicyResponse(
-                                savedPolicy.getSavedPolicyId(),
-                                null,
-                                savedPolicy.getServId(),
-                                institution == null ? null : institution.name(),
-                                null,
-                                null,
-                                List.of(),
-                                null,
-                                null),
-                        Long.MAX_VALUE));
-                continue;
+                policyId = null;
+                policyName = institution == null ? null : institution.name();
+                deadline = institution == null ? null : institution.deadline();
+                resultDate = institution == null ? null : institution.resultDate();
+                allDocumentNames = institution == null
+                        ? List.of()
+                        : institution.documents().stream()
+                                .map(CbInstitutionReader.CbDocument::name)
+                                .toList();
+            } else {
+                Policy policy = savedPolicy.getPolicy();
+                policyId = policy.getPolicyId();
+                policyName = policy.getPolicyName();
+                deadline = toLocalDate(policy.getApplicationDeadline());
+                resultDate = toLocalDate(policy.getResultDate());
+                allDocumentNames = connectPolicyDocumentRepository.findByPolicy(policy).stream()
+                        .map(connect -> connect.getDocument().getDocumentName())
+                        .toList();
             }
 
-            Policy policy = savedPolicy.getPolicy();
-            LocalDate deadline = toLocalDate(policy.getApplicationDeadline());
-            LocalDate resultDate = toLocalDate(policy.getResultDate());
-
             boolean deadlineExpired = deadline != null && deadline.isBefore(today);
-            List<String> documentNames = (deadline == null || deadlineExpired)
-                    ? List.of()
-                    : connectPolicyDocumentRepository.findByPolicy(policy).stream()
-                            .map(connect -> connect.getDocument().getDocumentName())
-                            .toList();
+            List<String> documentNames = (deadline == null || deadlineExpired) ? List.of() : allDocumentNames;
 
             AppSavedPolicyResponse response = new AppSavedPolicyResponse(
                     savedPolicy.getSavedPolicyId(),
-                    policy.getPolicyId(),
-                    null,
-                    policy.getPolicyName(),
+                    policyId,
+                    savedPolicy.getServId(),
+                    policyName,
                     deadline == null ? null : deadline.toString(),
                     toDDay(deadline, today),
                     documentNames,
