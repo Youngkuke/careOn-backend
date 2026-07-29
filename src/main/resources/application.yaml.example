@@ -46,8 +46,9 @@ wear:
   refresh-token-validity-seconds: 15552000
 
 app:
-  # 프론트엔드 비밀번호 재설정 페이지 주소. 실제 프론트 배포되면 이 값으로 바꿔주세요.
-  password-reset-url: http://localhost:3000/reset-password
+  # 프론트엔드 비밀번호 재설정 페이지 주소. 메일 본문에는 여기에 "?token=<토큰>"을 붙여 보낸다.
+  # 운영은 아래 주소를 쓴다. 로컬에서 프론트를 띄워 테스트할 때만 http://localhost:3000/reset-password 로 바꾼다.
+  password-reset-url: https://www.careon.site/reset-password
 
 policy:
   # 대안 복지(자가진단 결과와 무관하게 항상 보여주는 제도) 목록. 적은 순서가 화면 순서가 됩니다.
