@@ -2,7 +2,10 @@ package com.youngkke.careon.domain.todo;
 
 import com.youngkke.careon.domain.carer.Carer;
 import com.youngkke.careon.domain.carer.CarerRepository;
+import com.youngkke.careon.domain.document.DocumentIssue;
 import com.youngkke.careon.domain.document.DocumentIssueRepository;
+import com.youngkke.careon.domain.document.DocumentIssuer;
+import com.youngkke.careon.domain.document.DocumentIssuerRepository;
 import com.youngkke.careon.domain.document.dto.IssuerSummary;
 import com.youngkke.careon.domain.policy.ApplicationPeriodType;
 import com.youngkke.careon.domain.policy.CbInstitutionReader;
@@ -18,9 +21,12 @@ import com.youngkke.careon.global.error.ErrorCode;
 import com.youngkke.careon.global.util.DateTimes;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +39,7 @@ public class TodoService {
     private final TodoRepository todoRepository;
     private final SavedPolicyRepository savedPolicyRepository;
     private final DocumentIssueRepository documentIssueRepository;
+    private final DocumentIssuerRepository documentIssuerRepository;
     private final CarerRepository carerRepository;
     private final CbInstitutionReader cbInstitutionReader;
 
@@ -50,20 +57,96 @@ public class TodoService {
         LocalDate today = DateTimes.today();
 
         List<SavedPolicy> savedPolicies = savedPolicyRepository.findAllWithPolicyByCarer(carer);
+        if (savedPolicies.isEmpty()) {
+            return List.of();
+        }
+
         Map<String, CbInstitutionReader.CbInstitution> cbInstitutions =
                 cbInstitutionReader.findAllByServIds(savedPolicies.stream()
                         .map(SavedPolicy::getServId)
                         .filter(Objects::nonNull)
                         .toList());
 
+        Map<Integer, List<Todo>> todosBySavedPolicy = todoRepository
+                .findAllWithDocumentBySavedPolicyIn(savedPolicies).stream()
+                .collect(Collectors.groupingBy(todo -> todo.getSavedPolicy().getSavedPolicyId()));
+        CbIssuerLookup cbIssuerLookup = createCbIssuerLookup(todosBySavedPolicy);
+
         return savedPolicies.stream()
-                .map(savedPolicy -> savedPolicy.isCbInstitution()
-                        ? toCbTodoListResponse(savedPolicy, cbInstitutions.get(savedPolicy.getServId()), today)
-                        : toTodoListResponse(savedPolicy, today))
+                .map(savedPolicy -> {
+                    List<Todo> todos = todosBySavedPolicy.getOrDefault(savedPolicy.getSavedPolicyId(), List.of());
+                    return savedPolicy.isCbInstitution()
+                            ? toCbTodoListResponse(
+                                    savedPolicy, cbInstitutions.get(savedPolicy.getServId()), todos, cbIssuerLookup, today)
+                            : toTodoListResponse(savedPolicy, todos, cbIssuerLookup, today);
+                })
                 .toList();
     }
 
-    private TodoListResponse toTodoListResponse(SavedPolicy savedPolicy, LocalDate today) {
+    /**
+     * cb 서류의 발급처를 찾기 위한 조회표.
+     *
+     * <p>cb 서류는 우리 documents 테이블의 행이 아니라 이름만 있어서 발급처가 딸려오지 않는다.
+     * 그래서 두 가지를 미리 모아둔다. 이름이 같은 서류가 우리 마스터에 있으면 그 발급처를 빌려 쓰고,
+     * 없으면 cb가 준 링크의 도메인으로 발급처를 찾는다.
+     *
+     * @param issuersByDocumentName 서류 이름 -> 우리 마스터의 발급처 목록
+     * @param issuerByHost 도메인(www 제외) -> 발급처
+     */
+    private record CbIssuerLookup(
+            Map<String, List<IssuerSummary>> issuersByDocumentName, Map<String, DocumentIssuer> issuerByHost) {}
+
+    private CbIssuerLookup createCbIssuerLookup(Map<Integer, List<Todo>> todosBySavedPolicy) {
+        List<String> cbDocumentNames = todosBySavedPolicy.values().stream()
+                .flatMap(List::stream)
+                .filter(Todo::isCbDocument)
+                .map(Todo::getDocumentName)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (cbDocumentNames.isEmpty()) {
+            return new CbIssuerLookup(Map.of(), Map.of());
+        }
+
+        Map<String, List<IssuerSummary>> issuersByName = new HashMap<>();
+        for (DocumentIssue issue : documentIssueRepository.findAllWithIssuerByDocumentNameIn(cbDocumentNames)) {
+            List<IssuerSummary> issuers =
+                    issuersByName.computeIfAbsent(issue.getDocument().getDocumentName(), key -> new ArrayList<>());
+            IssuerSummary summary = IssuerSummary.from(issue.getDocumentIssuer());
+            // 같은 이름의 서류가 마스터에 여러 행 있으면 발급처가 겹칠 수 있다.
+            if (issuers.stream()
+                    .noneMatch(existing -> Objects.equals(existing.documentIssuerId(), summary.documentIssuerId()))) {
+                issuers.add(summary);
+            }
+        }
+
+        Map<String, DocumentIssuer> issuerByHost = new HashMap<>();
+        for (DocumentIssuer issuer : documentIssuerRepository.findAll()) {
+            String host = toHost(issuer.getIssuerSite());
+            if (host != null) {
+                issuerByHost.putIfAbsent(host, issuer);
+            }
+        }
+
+        return new CbIssuerLookup(issuersByName, issuerByHost);
+    }
+
+    /** "https://www.bokjiro.go.kr/a/b?c=d" -> "bokjiro.go.kr". 주소를 못 알아보면 null. */
+    private String toHost(String url) {
+        if (url == null || url.isBlank()) {
+            return null;
+        }
+        String host = url.trim().replaceFirst("^[a-zA-Z][a-zA-Z0-9+.-]*://", "");
+        int slash = host.indexOf('/');
+        if (slash >= 0) {
+            host = host.substring(0, slash);
+        }
+        host = host.replaceFirst("^www\\.", "");
+        return host.isBlank() ? null : host;
+    }
+
+    private TodoListResponse toTodoListResponse(
+            SavedPolicy savedPolicy, List<Todo> todos, CbIssuerLookup cbIssuerLookup, LocalDate today) {
         Policy policy = savedPolicy.getPolicy();
         LocalDateTime deadline = policy.getApplicationDeadline();
         boolean expired = deadline != null && deadline.toLocalDate().isBefore(today);
@@ -81,7 +164,7 @@ public class TodoService {
                 DateTimes.toIsoString(savedPolicy.getAppliedAt()),
                 DateTimes.toDateString(policy.getResultDate()),
                 policy.getLink(),
-                loadDocuments(savedPolicy, expired));
+                toDocuments(savedPolicy, todos, cbIssuerLookup, expired));
     }
 
     /**
@@ -94,7 +177,11 @@ public class TodoService {
      * 이름 없는 항목으로라도 보이는 편이 낫다.
      */
     private TodoListResponse toCbTodoListResponse(
-            SavedPolicy savedPolicy, CbInstitutionReader.CbInstitution institution, LocalDate today) {
+            SavedPolicy savedPolicy,
+            CbInstitutionReader.CbInstitution institution,
+            List<Todo> todos,
+            CbIssuerLookup cbIssuerLookup,
+            LocalDate today) {
         LocalDate deadline = institution == null ? null : institution.deadline();
         LocalDate resultDate = institution == null ? null : institution.resultDate();
         boolean expired = deadline != null && deadline.isBefore(today);
@@ -114,30 +201,32 @@ public class TodoService {
                 DateTimes.toIsoString(savedPolicy.getAppliedAt()),
                 resultDate == null ? null : resultDate.toString(),
                 institution == null ? null : institution.link(),
-                loadDocuments(savedPolicy, expired));
+                toDocuments(savedPolicy, todos, cbIssuerLookup, expired));
     }
 
     /** 서류 체크리스트는 아직 신청 전이고 마감 전일 때만 내려준다. 두 갈래 제도에 같은 규칙을 쓴다. */
-    private List<TodoDocumentDetail> loadDocuments(SavedPolicy savedPolicy, boolean expired) {
+    private List<TodoDocumentDetail> toDocuments(
+            SavedPolicy savedPolicy, List<Todo> todos, CbIssuerLookup cbIssuerLookup, boolean expired) {
         if (expired || savedPolicy.isApplied()) {
             return List.of();
         }
-        return todoRepository.findAllBySavedPolicy(savedPolicy).stream()
-                .map(this::toTodoDocumentDetail)
+        return todos.stream()
+                .map(todo -> toTodoDocumentDetail(todo, cbIssuerLookup))
                 .toList();
     }
 
     /**
-     * cb 서류는 우리 documents 테이블에 행이 없어 documentId와 발급처가 없다. 대신 발급처/서식 링크가
-     * 하나 붙을 수 있어 documentUrl로 내려간다. 기존 제도는 반대로 issuers가 채워지고 url이 없다.
+     * cb 서류는 우리 documents 테이블에 행이 없어 documentId가 없고 발급처도 딸려오지 않는다.
+     * 앱은 발급처가 비어 있으면 "발급시 확인 필요"로 표시하므로, 알 수 있는 건 최대한 채워서 내려준다.
+     * 어느 쪽으로도 못 찾으면 빈 목록이 맞다. 모르는 걸 아는 것처럼 지어내지는 않는다.
      */
-    private TodoDocumentDetail toTodoDocumentDetail(Todo todo) {
+    private TodoDocumentDetail toTodoDocumentDetail(Todo todo, CbIssuerLookup cbIssuerLookup) {
         if (todo.isCbDocument()) {
             return new TodoDocumentDetail(
                     todo.getTodoId(),
                     null,
                     todo.getDocumentName(),
-                    List.of(),
+                    resolveCbIssuers(todo, cbIssuerLookup),
                     todo.getDocumentUrl(),
                     todo.getDocumentUrlType(),
                     todo.isChecked());
@@ -154,6 +243,34 @@ public class TodoService {
                 null,
                 null,
                 todo.isChecked());
+    }
+
+    /**
+     * cb 서류의 발급처를 정한다.
+     *
+     * <p>1순위는 우리 마스터에 같은 이름으로 등록된 서류의 발급처다. 발급처 이름과 대표 사이트가 함께
+     * 관리되고 있어 화면에 그대로 쓸 수 있다.
+     *
+     * <p>2순위는 cb가 준 링크다. 도메인이 우리 발급처 목록과 맞으면 그 이름을 쓰고, 모르는 도메인이면
+     * 도메인 자체를 이름으로 보여준다. 이때 사이트 주소는 발급처 대표 주소가 아니라 cb가 준 주소를
+     * 그대로 쓴다. 서식 내려받기처럼 특정 페이지를 가리키는 링크라 대표 주소로 바꾸면 못 쓰게 된다.
+     */
+    private List<IssuerSummary> resolveCbIssuers(Todo todo, CbIssuerLookup cbIssuerLookup) {
+        List<IssuerSummary> byName = cbIssuerLookup.issuersByDocumentName().get(todo.getDocumentName());
+        if (byName != null && !byName.isEmpty()) {
+            return byName;
+        }
+
+        String url = todo.getDocumentUrl();
+        String host = toHost(url);
+        if (host == null) {
+            return List.of();
+        }
+
+        DocumentIssuer issuer = cbIssuerLookup.issuerByHost().get(host);
+        return List.of(issuer == null
+                ? new IssuerSummary(null, host, url)
+                : new IssuerSummary(issuer.getDocumentIssuerId(), issuer.getIssuerName(), url));
     }
 
     /** 투두 체크/체크 해제. 본인 소유가 아니면 존재하지 않는 것으로 취급한다. */
