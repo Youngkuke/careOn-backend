@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -46,4 +47,9 @@ public interface SafeZoneEventRepository extends JpaRepository<SafeZoneEvent, In
             @Param("timestamp") LocalDateTime timestamp,
             @Param("id") Integer id,
             Pageable pageable);
+
+    /** 회원 탈퇴 정리용. 이탈이 감지될 때마다 쌓이는 데이터라 한 번에 지운다. */
+    @Modifying
+    @Query("delete from SafeZoneEvent e where e.cared in :caredList")
+    void deleteAllByCaredIn(@Param("caredList") List<Cared> caredList);
 }

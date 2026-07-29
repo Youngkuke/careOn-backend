@@ -16,4 +16,9 @@ public interface CareTaskRepository extends JpaRepository<CareTask, Integer> {
      * 많아야 십여 건이라 전부 읽어 메모리에서 거르는 편이 단순하고 틀릴 여지도 없다.
      */
     List<CareTask> findAllByCaredAndActiveIsTrueOrderByScheduledTimeAscCareTaskIdAsc(Cared cared);
+
+    /** 회원 탈퇴 정리용. 딸린 완료 기록을 먼저 지워야 해서 목록으로 받는다. */
+    List<CareTask> findAllByCaredIn(List<Cared> caredList);
+
+    void deleteAllByCaredIn(List<Cared> caredList);
 }

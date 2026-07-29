@@ -12,6 +12,9 @@ public interface WearDeviceRepository extends JpaRepository<WearDevice, Integer>
 
     Optional<WearDevice> findByCared(Cared cared);
 
+    /** 회원 탈퇴 정리용. 피보호자당 한 대라 건별로 지워도 부담이 없다. */
+    void deleteAllByCaredIn(List<Cared> caredList);
+
     /**
      * 오래 연락이 끊겼는데 아직 미통신 알림을 안 보낸 워치들. 미통신 알림 배치용.
      * 보호자가 스스로 연결을 해제한 기기(disconnectedAt != null)는 연락이 없는 게 당연하므로 제외한다.

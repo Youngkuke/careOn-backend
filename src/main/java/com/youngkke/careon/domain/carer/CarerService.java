@@ -1,6 +1,16 @@
 package com.youngkke.careon.domain.carer;
 
+import com.youngkke.careon.domain.caretask.CareTask;
+import com.youngkke.careon.domain.caretask.CareTaskCompletionRepository;
+import com.youngkke.careon.domain.caretask.CareTaskRepository;
 import com.youngkke.careon.domain.notification.NotificationRepository;
+import com.youngkke.careon.domain.timeline.CareEventRepository;
+import com.youngkke.careon.domain.wear.EmergencyEventRepository;
+import com.youngkke.careon.domain.wear.HeartRateRepository;
+import com.youngkke.careon.domain.wear.SafeZoneEventRepository;
+import com.youngkke.careon.domain.wear.SafeZoneRepository;
+import com.youngkke.careon.domain.wear.WearDeviceRepository;
+import com.youngkke.careon.domain.wear.WearPairingCodeRepository;
 import com.youngkke.careon.domain.policy.InterestPolicyType;
 import com.youngkke.careon.domain.policy.InterestPolicyTypeRepository;
 import com.youngkke.careon.domain.policy.PolicyType;
@@ -59,6 +69,15 @@ public class CarerService {
     private final MatchedPolicyRepository matchedPolicyRepository;
     private final UserDocumentHistoryRepository userDocumentHistoryRepository;
     private final PushTokenRepository pushTokenRepository;
+    private final CareTaskRepository careTaskRepository;
+    private final CareTaskCompletionRepository careTaskCompletionRepository;
+    private final CareEventRepository careEventRepository;
+    private final HeartRateRepository heartRateRepository;
+    private final SafeZoneRepository safeZoneRepository;
+    private final SafeZoneEventRepository safeZoneEventRepository;
+    private final EmergencyEventRepository emergencyEventRepository;
+    private final WearDeviceRepository wearDeviceRepository;
+    private final WearPairingCodeRepository wearPairingCodeRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
     private final MailService mailService;
@@ -213,7 +232,14 @@ public class CarerService {
                 "처리되었습니다.", carer.isAppInstalled(), carer.getInstallPromptCount());
     }
 
-    /** 회원 탈퇴(웹/앱 공통). 연관된 saved_policies/todos/notifications/interest_policy_types를 먼저 정리한 뒤 유저를 삭제한다. */
+    /**
+     * 회원 탈퇴(웹/앱 공통). 유저를 참조하는 데이터를 전부 정리한 뒤 유저를 삭제한다.
+     *
+     * <p>FK 삭제 규칙이 모두 NO ACTION이라 참조가 하나라도 남아 있으면 DB가 삭제를 막는다. 그러면
+     * 탈퇴가 500으로 실패하고 사용자는 이유를 알 수 없으므로, 자식부터 부모 순으로 빠짐없이 지운다.
+     *
+     * <p>지우는 순서가 곧 참조 관계다. 새 테이블이 유저나 피보호자를 참조하게 되면 여기에도 추가해야 한다.
+     */
     @Transactional
     public MessageResponse withdraw(Integer userId) {
         Carer carer = getCarerOrThrow(userId);
@@ -231,11 +257,42 @@ public class CarerService {
         userDocumentHistoryRepository.deleteAll(userDocumentHistoryRepository.findAllWithDetailByCarer(carer));
         matchedPolicyRepository.deleteAll(matchedPolicyRepository.findAllWithPolicyByCarer(carer));
         carerIncomeSignalRepository.deleteAll(carerIncomeSignalRepository.findAllByCarerOrderBySignalIdAsc(carer));
-        caredRepository.deleteAll(caredRepository.findAllByCarerOrderByCaredIdAsc(carer));
+
+        deleteCaredData(carer);
 
         carerRepository.delete(carer);
 
         return new MessageResponse("회원 탈퇴가 완료되었습니다.");
+    }
+
+    /**
+     * 피보호자와 거기에 딸린 워치·돌봄 데이터를 정리한다.
+     *
+     * <p>safe_zone/wear_pairing_code의 created_by_carer_id와 emergency_event의 acknowledged_by도
+     * 보호자를 참조하지만, 보호자는 자기 피보호자만 등록·관리할 수 있어 피보호자 기준으로 지우면 전부 걸린다.
+     */
+    private void deleteCaredData(Carer carer) {
+        List<Cared> caredList = caredRepository.findAllByCarerOrderByCaredIdAsc(carer);
+        if (caredList.isEmpty()) {
+            return;
+        }
+
+        List<CareTask> careTasks = careTaskRepository.findAllByCaredIn(caredList);
+        if (!careTasks.isEmpty()) {
+            careTaskCompletionRepository.deleteAllByCareTaskIn(careTasks);
+        }
+
+        // 워치(wear_device)를 참조하는 것들을 먼저 지운 뒤에 워치를 지운다.
+        safeZoneEventRepository.deleteAllByCaredIn(caredList);
+        emergencyEventRepository.deleteAllByCaredIn(caredList);
+        heartRateRepository.deleteAllByCaredIn(caredList);
+        careEventRepository.deleteAllByCaredIn(caredList);
+        careTaskRepository.deleteAllByCaredIn(caredList);
+        safeZoneRepository.deleteAllByCaredIn(caredList);
+        wearDeviceRepository.deleteAllByCaredIn(caredList);
+        wearPairingCodeRepository.deleteAllByCaredIn(caredList);
+
+        caredRepository.deleteAll(caredList);
     }
 
     /**

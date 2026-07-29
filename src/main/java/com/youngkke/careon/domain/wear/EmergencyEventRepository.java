@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -36,4 +37,13 @@ public interface EmergencyEventRepository extends JpaRepository<EmergencyEvent, 
             @Param("timestamp") LocalDateTime timestamp,
             @Param("id") Integer id,
             Pageable pageable);
+
+    /**
+     * 회원 탈퇴 정리용. SOS가 발생할 때마다 쌓이는 데이터라 한 번에 지운다.
+     * acknowledged_by도 carers를 참조하지만, 보호자는 자기 피보호자의 SOS만 확인할 수 있어
+     * 피보호자 기준으로 다 걸린다.
+     */
+    @Modifying
+    @Query("delete from EmergencyEvent e where e.cared in :caredList")
+    void deleteAllByCaredIn(@Param("caredList") List<Cared> caredList);
 }
