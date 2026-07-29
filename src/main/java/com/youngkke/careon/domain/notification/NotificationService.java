@@ -5,13 +5,17 @@ import com.youngkke.careon.domain.carer.CarerRepository;
 import com.youngkke.careon.domain.notification.dto.NotificationResponse;
 import com.youngkke.careon.domain.notification.dto.ReadAllResponse;
 import com.youngkke.careon.domain.notification.dto.UnreadCountResponse;
+import com.youngkke.careon.domain.policy.CbInstitutionReader;
 import com.youngkke.careon.domain.policy.Policy;
+import com.youngkke.careon.domain.policy.SavedPolicy;
 import com.youngkke.careon.global.error.BusinessException;
 import com.youngkke.careon.global.error.ErrorCode;
 import com.youngkke.careon.global.util.DateTimes;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +27,7 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final CarerRepository carerRepository;
+    private final CbInstitutionReader cbInstitutionReader;
 
     /**
      * 알림 목록 조회 (최신순).
@@ -32,8 +37,16 @@ public class NotificationService {
         Carer carer = getCarerOrThrow(carerId);
         LocalDateTime now = LocalDateTime.now(DateTimes.KST);
 
-        return notificationRepository.findAllWithPolicyByCarer(carer).stream()
-                .map(notification -> toResponse(notification, now))
+        List<Notification> notifications = notificationRepository.findAllWithPolicyByCarer(carer);
+        Map<String, CbInstitutionReader.CbInstitution> cbInstitutions =
+                cbInstitutionReader.findAllByServIds(notifications.stream()
+                        .map(notification -> notification.getSavedPolicy().getServId())
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .toList());
+
+        return notifications.stream()
+                .map(notification -> toResponse(notification, cbInstitutions, now))
                 .toList();
     }
 
@@ -53,13 +66,34 @@ public class NotificationService {
         return new ReadAllResponse(unread.size(), "모든 알림을 읽음 처리했습니다.");
     }
 
-    private NotificationResponse toResponse(Notification notification, LocalDateTime now) {
-        Policy policy = notification.getSavedPolicy().getPolicy();
+    /**
+     * cb 제도의 알림은 policy가 없어 제도명을 cb에서 읽는다.
+     * 원본 행을 못 찾더라도 알림 자체는 목록에 남긴다. 사용자가 이미 받은 알림이 화면에서 사라지면
+     * 뱃지 숫자와 목록이 어긋나 보이기 때문이다.
+     */
+    private NotificationResponse toResponse(
+            Notification notification,
+            Map<String, CbInstitutionReader.CbInstitution> cbInstitutions,
+            LocalDateTime now) {
+        SavedPolicy savedPolicy = notification.getSavedPolicy();
+        Integer policyId = null;
+        String policyName = null;
+
+        if (savedPolicy.isCbInstitution()) {
+            CbInstitutionReader.CbInstitution institution = cbInstitutions.get(savedPolicy.getServId());
+            policyName = institution == null ? null : institution.name();
+        } else {
+            Policy policy = savedPolicy.getPolicy();
+            policyId = policy.getPolicyId();
+            policyName = policy.getPolicyName();
+        }
+
         return new NotificationResponse(
                 notification.getNotificationId(),
-                notification.getSavedPolicy().getSavedPolicyId(),
-                policy.getPolicyId(),
-                policy.getPolicyName(),
+                savedPolicy.getSavedPolicyId(),
+                policyId,
+                savedPolicy.getServId(),
+                policyName,
                 notification.getNotificationType().name(),
                 DateTimes.toIsoString(notification.getSentAt()),
                 notification.isRead(),

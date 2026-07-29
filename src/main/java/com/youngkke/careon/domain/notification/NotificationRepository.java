@@ -11,11 +11,17 @@ public interface NotificationRepository extends JpaRepository<Notification, Inte
 
     void deleteAllBySavedPolicyIn(List<SavedPolicy> savedPolicies);
 
-    /** 알림 목록 (최신순). 저장 제도/제도까지 즉시 로딩한다. */
+    /**
+     * 알림 목록 (최신순). 저장 제도/제도까지 즉시 로딩한다.
+     *
+     * <p>cb 제도의 알림은 s.policy가 비어 있으므로 left join이어야 한다. 내부 조인이면 그 알림들이
+     * 목록에서 통째로 빠지는데, 미읽음 개수(countUnreadByCarer)는 이 조인을 타지 않아 그대로 세어진다.
+     * 그러면 종 뱃지에는 숫자가 뜨는데 목록에는 아무것도 없는 상태가 된다.
+     */
     @Query("""
             select n from Notification n
             join fetch n.savedPolicy s
-            join fetch s.policy
+            left join fetch s.policy
             where s.carer = :carer
             order by n.sentAt desc
             """)
