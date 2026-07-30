@@ -36,6 +36,7 @@ public enum ErrorCode {
 
     // Todo
     TODO_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 투두 항목입니다."),
+    TODO_NOT_CHECKABLE(HttpStatus.BAD_REQUEST, "제출할 서류가 없어 체크할 수 없는 항목입니다."),
 
     // Care task (워치 정기 안부·복약·할 일)
     CARE_TASK_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 할 일입니다."),

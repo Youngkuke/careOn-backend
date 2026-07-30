@@ -296,6 +296,31 @@ public class TodoService {
     }
 
     /**
+     * 투두 1건이 체크할 수 있는 항목인지. 목록 조회에서 내려주는 isCheckable과 같은 기준을 단건으로 본다.
+     *
+     * <p>앱이 체크박스를 안 그리게 했더라도 구버전 앱이나 직접 호출로 요청이 들어올 수 있어, 서버에서도 막는다.
+     */
+    private boolean isCheckable(Todo todo) {
+        if (!todo.isCbDocument()) {
+            return documentIssueRepository.findByDocument(todo.getDocument()).stream()
+                    .noneMatch(issue -> NO_DOCUMENT_ISSUER_NAME.equals(issue.getDocumentIssuer().getIssuerName()));
+        }
+        if (todo.getDocumentName() == null) {
+            return true;
+        }
+
+        // cb 서류는 이름으로 찾는다. 목록 조회와 같은 순서로 마스터를 먼저 보고 cb 매핑을 본다.
+        List<String> names = List.of(todo.getDocumentName());
+        boolean masterSaysNoDocument = documentIssueRepository.findAllWithIssuerByDocumentNameIn(names).stream()
+                .anyMatch(issue -> NO_DOCUMENT_ISSUER_NAME.equals(issue.getDocumentIssuer().getIssuerName()));
+        if (masterSaysNoDocument) {
+            return false;
+        }
+        return cbDocumentIssuerRepository.findAllWithIssuerByDocumentNameIn(names).stream()
+                .noneMatch(mapping -> NO_DOCUMENT_ISSUER_NAME.equals(mapping.getDocumentIssuer().getIssuerName()));
+    }
+
+    /**
      * cb 서류의 발급처를 정한다.
      *
      * <p>1순위는 우리 마스터에 같은 이름으로 등록된 서류의 발급처다. 발급처 이름과 대표 사이트가 함께
@@ -333,6 +358,11 @@ public class TodoService {
         Todo todo = todoRepository
                 .findByTodoIdAndSavedPolicy_Carer(todoId, carer)
                 .orElseThrow(() -> new BusinessException(ErrorCode.TODO_NOT_FOUND));
+
+        // 체크를 거는 것만 막는다. 해제는 그대로 둬야 예전에 잘못 체크된 항목을 되돌릴 수 있다.
+        if (request.isChecked() && !isCheckable(todo)) {
+            throw new BusinessException(ErrorCode.TODO_NOT_CHECKABLE);
+        }
 
         todo.updateChecked(request.isChecked());
 
