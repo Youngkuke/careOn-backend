@@ -284,9 +284,10 @@ public class TodoService {
         }
 
         DocumentIssuer issuer = cbIssuerLookup.issuerByHost().get(host);
+        // 모르는 도메인이면 안내 문구를 지어낼 수 없어 null로 둔다. 앱은 그때 발급처 이름(도메인)을 쓴다.
         return List.of(issuer == null
-                ? new IssuerSummary(null, host, url)
-                : new IssuerSummary(issuer.getDocumentIssuerId(), issuer.getIssuerName(), url));
+                ? new IssuerSummary(null, host, url, null)
+                : new IssuerSummary(issuer.getDocumentIssuerId(), issuer.getIssuerName(), url, issuer.getIssueGuide()));
     }
 
     /** 투두 체크/체크 해제. 본인 소유가 아니면 존재하지 않는 것으로 취급한다. */
