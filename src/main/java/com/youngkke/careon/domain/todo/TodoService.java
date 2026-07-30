@@ -2,6 +2,8 @@ package com.youngkke.careon.domain.todo;
 
 import com.youngkke.careon.domain.carer.Carer;
 import com.youngkke.careon.domain.carer.CarerRepository;
+import com.youngkke.careon.domain.document.CbDocumentIssuer;
+import com.youngkke.careon.domain.document.CbDocumentIssuerRepository;
 import com.youngkke.careon.domain.document.DocumentIssue;
 import com.youngkke.careon.domain.document.DocumentIssueRepository;
 import com.youngkke.careon.domain.document.DocumentIssuer;
@@ -26,6 +28,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -40,6 +43,7 @@ public class TodoService {
     private final SavedPolicyRepository savedPolicyRepository;
     private final DocumentIssueRepository documentIssueRepository;
     private final DocumentIssuerRepository documentIssuerRepository;
+    private final CbDocumentIssuerRepository cbDocumentIssuerRepository;
     private final CarerRepository carerRepository;
     private final CbInstitutionReader cbInstitutionReader;
 
@@ -87,10 +91,10 @@ public class TodoService {
      * cb 서류의 발급처를 찾기 위한 조회표.
      *
      * <p>cb 서류는 우리 documents 테이블의 행이 아니라 이름만 있어서 발급처가 딸려오지 않는다.
-     * 그래서 두 가지를 미리 모아둔다. 이름이 같은 서류가 우리 마스터에 있으면 그 발급처를 빌려 쓰고,
-     * 없으면 cb가 준 링크의 도메인으로 발급처를 찾는다.
+     * 그래서 두 가지를 미리 모아둔다. 이름으로 발급처를 찾고, 못 찾으면 cb가 준 링크의 도메인으로 찾는다.
      *
-     * @param issuersByDocumentName 서류 이름 -> 우리 마스터의 발급처 목록
+     * @param issuersByDocumentName 서류 이름 -> 발급처 목록. 우리 마스터에 같은 이름의 서류가 있으면 그 발급처를
+     *     빌려 쓰고, 없으면 cb 전용 매핑(cb_document_issuers)을 본다
      * @param issuerByHost 도메인(www 제외) -> 발급처
      */
     private record CbIssuerLookup(
@@ -118,6 +122,18 @@ public class TodoService {
                     .noneMatch(existing -> Objects.equals(existing.documentIssuerId(), summary.documentIssuerId()))) {
                 issuers.add(summary);
             }
+        }
+
+        // 마스터에서 못 찾은 이름만 cb 전용 매핑으로 채운다. 마스터 쪽이 서류-발급처를 더 정확히 들고 있어서다.
+        // 아래 루프가 돌면서 키가 늘어나므로, 마스터로 채워진 이름을 먼저 떠 놓고 그것과 비교한다.
+        Set<String> namesFromMaster = Set.copyOf(issuersByName.keySet());
+        for (CbDocumentIssuer mapping : cbDocumentIssuerRepository.findAllWithIssuerByDocumentNameIn(cbDocumentNames)) {
+            if (namesFromMaster.contains(mapping.getDocumentName())) {
+                continue;
+            }
+            issuersByName
+                    .computeIfAbsent(mapping.getDocumentName(), key -> new ArrayList<>())
+                    .add(IssuerSummary.from(mapping.getDocumentIssuer()));
         }
 
         Map<String, DocumentIssuer> issuerByHost = new HashMap<>();
