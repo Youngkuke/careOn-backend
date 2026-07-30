@@ -96,9 +96,24 @@ public class TodoService {
      * @param issuersByDocumentName 서류 이름 -> 발급처 목록. 우리 마스터에 같은 이름의 서류가 있으면 그 발급처를
      *     빌려 쓰고, 없으면 cb 전용 매핑(cb_document_issuers)을 본다
      * @param issuerByHost 도메인(www 제외) -> 발급처
+     * @param fallback 위 어느 쪽으로도 못 찾았을 때 쓸 발급처("신청 공고 확인"). 마스터에 그 행이 없으면 null이다
      */
     private record CbIssuerLookup(
-            Map<String, List<IssuerSummary>> issuersByDocumentName, Map<String, DocumentIssuer> issuerByHost) {}
+            Map<String, List<IssuerSummary>> issuersByDocumentName,
+            Map<String, DocumentIssuer> issuerByHost,
+            IssuerSummary fallback) {}
+
+    /**
+     * 어느 쪽으로도 발급처를 못 찾았을 때 쓰는 값.
+     *
+     * <p>cb 서류 이름은 AI가 제도마다 새로 생성해서 계속 늘어난다. 실제로 "개인정보제공 동의서"가 이미
+     * 매핑돼 있는데도 띄어쓰기가 하나 다른 "개인정보 제공 동의서"가 새로 들어와 발급처가 비었다.
+     * 이름을 하나씩 채우는 방식으로는 따라잡을 수 없다.
+     *
+     * <p>"신청 공고 확인"은 어떤 서류에 붙여도 거짓이 되지 않는다. 그 서류를 요구한 제도의 공고에는
+     * 발급처가 적혀 있기 때문이다. 그래서 모르는 서류에 지어낸 기관을 붙이는 것과 달리 안전하다.
+     */
+    private static final String FALLBACK_ISSUER_NAME = "신청 공고 확인";
 
     private CbIssuerLookup createCbIssuerLookup(Map<Integer, List<Todo>> todosBySavedPolicy) {
         List<String> cbDocumentNames = todosBySavedPolicy.values().stream()
@@ -109,7 +124,7 @@ public class TodoService {
                 .distinct()
                 .toList();
         if (cbDocumentNames.isEmpty()) {
-            return new CbIssuerLookup(Map.of(), Map.of());
+            return new CbIssuerLookup(Map.of(), Map.of(), null);
         }
 
         Map<String, List<IssuerSummary>> issuersByName = new HashMap<>();
@@ -137,14 +152,18 @@ public class TodoService {
         }
 
         Map<String, DocumentIssuer> issuerByHost = new HashMap<>();
+        IssuerSummary fallback = null;
         for (DocumentIssuer issuer : documentIssuerRepository.findAll()) {
             String host = toHost(issuer.getIssuerSite());
             if (host != null) {
                 issuerByHost.putIfAbsent(host, issuer);
             }
+            if (FALLBACK_ISSUER_NAME.equals(issuer.getIssuerName())) {
+                fallback = IssuerSummary.from(issuer);
+            }
         }
 
-        return new CbIssuerLookup(issuersByName, issuerByHost);
+        return new CbIssuerLookup(issuersByName, issuerByHost, fallback);
     }
 
     /** "https://www.bokjiro.go.kr/a/b?c=d" -> "bokjiro.go.kr". 주소를 못 알아보면 null. */
@@ -280,7 +299,9 @@ public class TodoService {
         String url = todo.getDocumentUrl();
         String host = toHost(url);
         if (host == null) {
-            return List.of();
+            // 이름도 링크도 못 찾았다. 발급처를 비워 두면 앱이 "발급처 확인 필요"로 표시하는데,
+            // 그건 사용자에게 다음에 뭘 하라는 말이 없다. 공고를 보라는 안내가 항상 참이라 그쪽이 낫다.
+            return cbIssuerLookup.fallback() == null ? List.of() : List.of(cbIssuerLookup.fallback());
         }
 
         DocumentIssuer issuer = cbIssuerLookup.issuerByHost().get(host);
