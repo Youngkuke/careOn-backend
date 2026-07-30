@@ -331,6 +331,7 @@ public class SavedPolicyService {
             LocalDate deadline;
             LocalDate resultDate;
             List<String> allDocumentNames;
+            ApplicationPeriodType periodType;
 
             if (savedPolicy.isCbInstitution()) {
                 // 원본 행이 사라지는 일은 없다고 확인했지만, 만에 하나 못 찾더라도 찜 항목 자체는 목록에 남긴다.
@@ -344,6 +345,8 @@ public class SavedPolicyService {
                         : institution.documents().stream()
                                 .map(CbInstitutionReader.CbDocument::name)
                                 .toList();
+                // cb 제도는 상시 여부를 알려주는 값이 원본에 없다. 마감일 유무로만 가를 수 있어 ALWAYS_OPEN이 나오지 않는다.
+                periodType = deadline != null ? ApplicationPeriodType.FIXED : ApplicationPeriodType.UNKNOWN;
             } else {
                 Policy policy = savedPolicy.getPolicy();
                 policyId = policy.getPolicyId();
@@ -353,6 +356,7 @@ public class SavedPolicyService {
                 allDocumentNames = connectPolicyDocumentRepository.findByPolicy(policy).stream()
                         .map(connect -> connect.getDocument().getDocumentName())
                         .toList();
+                periodType = policy.getApplicationPeriodTypeOrDefault();
             }
 
             boolean deadlineExpired = deadline != null && deadline.isBefore(today);
@@ -365,6 +369,7 @@ public class SavedPolicyService {
                     policyName,
                     deadline == null ? null : deadline.toString(),
                     toDDay(deadline, today),
+                    periodType.name(),
                     documentNames,
                     resultDate == null ? null : resultDate.toString(),
                     toDDay(resultDate, today));
