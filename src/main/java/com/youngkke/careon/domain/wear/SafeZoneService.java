@@ -127,8 +127,8 @@ public class SafeZoneService {
                 .latitude(request.location().latitude())
                 .longitude(request.location().longitude())
                 .accuracyMeters(request.location().accuracyMeters())
-                .locationCapturedAt(DateTimes.parseToKst(request.location().capturedAt()))
-                .detectedAt(DateTimes.parseToKst(request.detectedAt()))
+                .locationCapturedAt(DateTimes.parseToKstNotFuture(request.location().capturedAt()))
+                .detectedAt(DateTimes.parseToKstNotFuture(request.detectedAt()))
                 .build();
 
         boolean isNewEvent;

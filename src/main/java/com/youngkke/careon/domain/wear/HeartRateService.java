@@ -44,7 +44,7 @@ public class HeartRateService {
                 .wearDevice(wearDevice)
                 .idempotencyKey(idempotencyKey)
                 .bpm(request.bpm())
-                .measuredAt(DateTimes.parseToKst(request.measuredAt()))
+                .measuredAt(DateTimes.parseToKstNotFuture(request.measuredAt()))
                 .source(request.source())
                 .build();
 

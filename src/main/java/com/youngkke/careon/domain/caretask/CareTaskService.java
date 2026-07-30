@@ -92,7 +92,7 @@ public class CareTaskService {
 
         LocalDateTime completedAt = request.completedAt() == null
                 ? LocalDateTime.now()
-                : DateTimes.parseToKst(request.completedAt());
+                : DateTimes.parseToKstNotFuture(request.completedAt());
         CareTaskCompletion completion = careTaskCompletionRepository
                 .findByCareTaskAndCompletedDate(task, today)
                 .map(existing -> {

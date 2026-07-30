@@ -53,7 +53,7 @@ public class WearDeviceStatusService {
         WearDevice wearDevice = wearDeviceRepository.getConnectedOrThrow(wearDeviceId);
         LocalDateTime now = LocalDateTime.now();
 
-        wearDevice.reportBattery(request.batteryPercent(), DateTimes.parseToKst(request.reportedAt()));
+        wearDevice.reportBattery(request.batteryPercent(), DateTimes.parseToKstNotFuture(request.reportedAt()));
         // last_seen_at은 WearLastSeenInterceptor가 이 요청에도 똑같이 적용한다.
 
         boolean notified = false;

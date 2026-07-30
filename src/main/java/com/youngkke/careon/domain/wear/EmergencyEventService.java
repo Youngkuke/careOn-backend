@@ -67,10 +67,10 @@ public class EmergencyEventService {
                 .latitude(location == null ? null : location.latitude())
                 .longitude(location == null ? null : location.longitude())
                 .locationAccuracyM(location == null ? null : location.accuracyMeters())
-                .locationCapturedAt(location == null ? null : DateTimes.parseToKst(location.capturedAt()))
+                .locationCapturedAt(location == null ? null : DateTimes.parseToKstNotFuture(location.capturedAt()))
                 .locationSource(location == null ? null : location.source())
                 .locationStatus(request.locationStatus())
-                .requestedAt(DateTimes.parseToKst(request.requestedAt()))
+                .requestedAt(DateTimes.parseToKstNotFuture(request.requestedAt()))
                 .build();
 
         boolean isNewEvent;
