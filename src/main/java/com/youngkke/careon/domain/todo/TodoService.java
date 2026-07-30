@@ -115,6 +115,9 @@ public class TodoService {
      */
     private static final String FALLBACK_ISSUER_NAME = "신청 공고 확인";
 
+    /** 이 발급처가 붙은 행은 서류가 아니라 "낼 게 없다"는 안내다. 체크박스를 그리지 않는다. */
+    private static final String NO_DOCUMENT_ISSUER_NAME = "별도 서류 제출 불필요";
+
     private CbIssuerLookup createCbIssuerLookup(Map<Integer, List<Todo>> todosBySavedPolicy) {
         List<String> cbDocumentNames = todosBySavedPolicy.values().stream()
                 .flatMap(List::stream)
@@ -252,19 +255,20 @@ public class TodoService {
 
     /**
      * cb 서류는 우리 documents 테이블에 행이 없어 documentId가 없고 발급처도 딸려오지 않는다.
-     * 앱은 발급처가 비어 있으면 "발급시 확인 필요"로 표시하므로, 알 수 있는 건 최대한 채워서 내려준다.
-     * 어느 쪽으로도 못 찾으면 빈 목록이 맞다. 모르는 걸 아는 것처럼 지어내지는 않는다.
+     * 그래서 이름과 링크로 최대한 찾아 채우고, 그래도 못 찾으면 신청 공고를 보라고 안내한다.
      */
     private TodoDocumentDetail toTodoDocumentDetail(Todo todo, CbIssuerLookup cbIssuerLookup) {
         if (todo.isCbDocument()) {
+            List<IssuerSummary> issuers = resolveCbIssuers(todo, cbIssuerLookup);
             return new TodoDocumentDetail(
                     todo.getTodoId(),
                     null,
                     todo.getDocumentName(),
-                    resolveCbIssuers(todo, cbIssuerLookup),
+                    issuers,
                     todo.getDocumentUrl(),
                     todo.getDocumentUrlType(),
-                    todo.isChecked());
+                    todo.isChecked(),
+                    isCheckable(issuers));
         }
 
         List<IssuerSummary> issuers = documentIssueRepository.findByDocument(todo.getDocument()).stream()
@@ -277,7 +281,18 @@ public class TodoService {
                 issuers,
                 null,
                 null,
-                todo.isChecked());
+                todo.isChecked(),
+                isCheckable(issuers));
+    }
+
+    /**
+     * 준비할 게 있는 항목인지. 발급처가 "별도 서류 제출 불필요"면 체크할 대상이 아니다.
+     *
+     * <p>원문 필요 서류에 "제출서류 없음"처럼 서류가 아닌 문구가 섞여 들어온다. 목록에서 아예 빼면
+     * 사용자는 서류가 왜 하나도 없는지 모르므로 줄은 남기되, 체크박스만 앱에서 안 그리도록 알려준다.
+     */
+    private boolean isCheckable(List<IssuerSummary> issuers) {
+        return issuers.stream().noneMatch(issuer -> NO_DOCUMENT_ISSUER_NAME.equals(issuer.issuerName()));
     }
 
     /**
